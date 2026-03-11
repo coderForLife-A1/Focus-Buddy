@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Eye Focus Tracker</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #0f0f1a;
+            color: #e0e0e0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        h1 {
+            margin: 24px 0 8px;
+            font-size: 1.8rem;
+            background: linear-gradient(135deg, #00d4ff, #7b2ff7);
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .subtitle {
+            color: #888;
+            margin-bottom: 20px;
+            font-size: 0.9rem;
+        }
+
+        .main-container {
+            display: flex;
+            gap: 24px;
+            flex-wrap: wrap;
+            justify-content: center;
+            padding: 0 20px 40px;
+        }
+
+        .video-panel {
+            position: relative;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            border: 2px solid #222;
+        }
+
+        video, canvas {
+            display: block;
+            width: 640px;
+            height: 480px;
+        }
+
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        .info-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            width: 300px;
+        }
+
+        .card {
+            background: #1a1a2e;
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+            border: 1px solid #2a2a3e;
+        }
+
+        .status-card {
+            text-align: center;
+        }
+
+        .status-icon {
+            font-size: 3.5rem;
+            margin-bottom: 8px;
+            transition: transform 0.3s;
+        }
+
+        .status-text {
+            font-size: 1.6rem;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .status-detail {
+            font-size: 0.85rem;
+            color: #999;
+        }
+
+        .focused .status-icon { transform: scale(1.1); }
+        .focused .status-text { color: #00e676; }
+        .not-focused .status-text { color: #ff5252; }
+        .no-face .status-text { color: #ffc107; }
+
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #2a2a3e;
+        }
+        .stat-row:last-child { border-bottom: none; }
+        .stat-label { color: #888; font-size: 0.85rem; }
+        .stat-value { font-weight: 600; font-size: 0.95rem; }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #2a2a3e;
+            border-radius: 4px;
+            margin-top: 12px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.5s ease, background 0.5s ease;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 12px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            width: 100%;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #00d4ff, #7b2ff7);
+            color: #fff;
+        }
+        .btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
+
+        .btn-danger {
+            background: #ff5252;
+            color: #fff;
+        }
+        .btn-danger:hover { background: #e04040; }
+
+        .eye-debug {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 8px;
+        }
+
+        .eye-box {
+            text-align: center;
+        }
+
+        .eye-box canvas {
+            position: static;
+            width: 100px;
+            height: 60px;
+            border-radius: 8px;
+            border: 1px solid #333;
+            background: #111;
+        }
+
+        .eye-label {
+            font-size: 0.75rem;
+            color: #888;
+            margin-top: 4px;
+        }
+
+        .log-list {
+            max-height: 150px;
+            overflow-y: auto;
+            font-size: 0.8rem;
+        }
+
+        .log-item {
+            padding: 4px 0;
+            border-bottom: 1px solid #1f1f35;
+        }
+
+        .log-item .time { color: #555; margin-right: 6px; }
+        .log-focused { color: #00e676; }
+        .log-away { color: #ff5252; }
+
+        .sensitivity-control {
+            margin-top: 8px;
+        }
+
+        .sensitivity-control label {
+            font-size: 0.8rem;
+            color: #888;
+        }
+
+        .sensitivity-control input[type="range"] {
+            width: 100%;
+            margin-top: 4px;
+            accent-color: #7b2ff7;
+        }
+
+        @media (max-width: 1000px) {
+            video, canvas { width: 100%; height: auto; }
+            .video-panel { width: 100%; max-width: 640px; }
+            .info-panel { width: 100%; max-width: 640px; }
+        }
+    </style>
+</head>
+<body>
+    <h1>Eye Focus Tracker</h1>
+    <p class="subtitle">Real-time gaze detection &mdash; are you looking at the screen?</p>
+
+    <div class="main-container">
+        <div class="video-panel">
+            <video id="video" playsinline></video>
+            <canvas id="overlay"></canvas>
+        </div>
+
+        <div class="info-panel">
+            <!-- Status Card -->
+            <div id="statusCard" class="card status-card no-face">
+                <div class="status-icon" id="statusIcon">⏳</div>
+                <div class="status-text" id="statusText">Initializing...</div>
+                <div class="status-detail" id="statusDetail">Setting up camera &amp; model</div>
+            </div>
+
+            <!-- Stats Card -->
+            <div class="card">
+                <div class="stat-row">
+                    <span class="stat-label">Session Time</span>
+                    <span class="stat-value" id="sessionTime">00:00</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Focus Time</span>
+                    <span class="stat-value" id="focusTime">00:00</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Focus Rate</span>
+                    <span class="stat-value" id="focusRate">--%</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Distractions</span>
+                    <span class="stat-value" id="distractionCount">0</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill" style="width:0%;background:#ffc107"></div>
+                </div>
+            </div>
+
+            <!-- Eye Close-ups -->
+            <div class="card">
+                <div style="font-size:0.85rem;color:#888;margin-bottom:8px;">Eye Close-ups</div>
+                <div class="eye-debug">
+                    <div class="eye-box">
+                        <canvas id="leftEyeCanvas" width="100" height="60"></canvas>
+                        <div class="eye-label">Left Eye</div>
+                    </div>
+                    <div class="eye-box">
+                        <canvas id="rightEyeCanvas" width="100" height="60"></canvas>
+                        <div class="eye-label">Right Eye</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sensitivity -->
+            <div class="card">
+                <div class="sensitivity-control">
+                    <label>Sensitivity: <span id="sensLabel">Medium</span></label>
+                    <input type="range" id="sensitivity" min="1" max="5" value="3" step="1">
+                </div>
+            </div>
+
+            <!-- Log -->
+            <div class="card">
+                <div style="font-size:0.85rem;color:#888;margin-bottom:8px;">Activity Log</div>
+                <div class="log-list" id="logList"></div>
+            </div>
+
+            <!-- Controls -->
+            <button class="btn btn-primary" id="startBtn" onclick="startTracking()">Start Tracking</button>
+        </div>
+    </div>
+
+    <!-- MediaPipe via CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+
+    <script>
+        // ─── DOM refs ───
+        const video        = document.getElementById('video');
+        const overlay      = document.getElementById('overlay');
+        const ctx          = overlay.getContext('2d');
+        const statusCard   = document.getElementById('statusCard');
+        const statusIcon   = document.getElementById('statusIcon');
+        const statusText   = document.getElementById('statusText');
+        const statusDetail = document.getElementById('statusDetail');
+        const sessionTimeEl    = document.getElementById('sessionTime');
+        const focusTimeEl      = document.getElementById('focusTime');
+        const focusRateEl      = document.getElementById('focusRate');
+        const distractionEl    = document.getElementById('distractionCount');
+        const progressFill     = document.getElementById('progressFill');
+        const logList          = document.getElementById('logList');
+        const startBtn         = document.getElementById('startBtn');
+        const sensitivityInput = document.getElementById('sensitivity');
+        const sensLabel        = document.getElementById('sensLabel');
+        const leftEyeCanvas    = document.getElementById('leftEyeCanvas');
+        const rightEyeCanvas   = document.getElementById('rightEyeCanvas');
+        const leftEyeCtx       = leftEyeCanvas.getContext('2d');
+        const rightEyeCtx      = rightEyeCanvas.getContext('2d');
+
+        // ─── State ───
+        let tracking        = false;
+        let sessionStart    = null;
+        let totalFocusMs    = 0;
+        let lastFocused     = false;
+        let lastFocusStamp  = null;
+        let distractionCount = 0;
+        let focusHistory     = [];  // rolling window
+        let camera           = null;
+        let faceMesh         = null;
+
+        // MediaPipe Face Mesh landmark indices
+        // Left eye contour
+        const LEFT_EYE  = [33,7,163,144,145,153,154,155,133,173,157,158,159,160,161,246];
+        // Right eye contour
+        const RIGHT_EYE = [362,382,381,380,374,373,390,249,263,466,388,387,386,385,384,398];
+        // Left iris
+        const LEFT_IRIS  = [468,469,470,471,472];
+        // Right iris
+        const RIGHT_IRIS = [473,474,475,476,477];
+        // Nose tip (for head pose)
+        const NOSE_TIP = 1;
+        // Forehead center
+        const FOREHEAD = 10;
+        // Chin
+        const CHIN = 152;
+        // Left & right face edge
+        const LEFT_FACE = 234;
+        const RIGHT_FACE = 454;
+
+        const SENS_LABELS = ['Very High', 'High', 'Medium', 'Low', 'Very Low'];
+        const SENS_THRESHOLDS = [0.15, 0.20, 0.28, 0.35, 0.42]; // iris ratio thresholds
+        const HEAD_THRESHOLDS = [0.12, 0.16, 0.22, 0.28, 0.34]; // head turn thresholds
+
+        sensitivityInput.addEventListener('input', () => {
+            sensLabel.textContent = SENS_LABELS[sensitivityInput.value - 1];
+        });
+
+        // ─── Helpers ───
+        function fmtTime(ms) {
+            const s = Math.floor(ms / 1000);
+            const m = Math.floor(s / 60);
+            return `${String(m).padStart(2,'0')}:${String(s % 60).padStart(2,'0')}`;
+        }
+
+        function addLog(msg, cls) {
+            const el = document.createElement('div');
+            el.className = 'log-item ' + cls;
+            const t = new Date();
+            const timeStr = t.toLocaleTimeString();
+            el.innerHTML = `<span class="time">${timeStr}</span>${msg}`;
+            logList.prepend(el);
+            // Keep max 50 entries
+            while (logList.children.length > 50) logList.removeChild(logList.lastChild);
+        }
+
+        // Compute iris position ratio within eye (0 = left edge, 1 = right edge)
+        function irisRatio(landmarks, eyeIndices, irisIndices) {
+            // Eye bounding box
+            let minX = Infinity, maxX = -Infinity;
+            for (const i of eyeIndices) {
+                const x = landmarks[i].x;
+                if (x < minX) minX = x;
+                if (x > maxX) maxX = x;
+            }
+            // Iris center
+            const irisCenter = landmarks[irisIndices[0]]; // center point
+            const eyeWidth = maxX - minX;
+            if (eyeWidth < 0.001) return 0.5;
+            return (irisCenter.x - minX) / eyeWidth;
+        }
+
+        // Vertical iris ratio (for up/down detection)
+        function irisRatioY(landmarks, eyeIndices, irisIndices) {
+            let minY = Infinity, maxY = -Infinity;
+            for (const i of eyeIndices) {
+                const y = landmarks[i].y;
+                if (y < minY) minY = y;
+                if (y > maxY) maxY = y;
+            }
+            const irisCenter = landmarks[irisIndices[0]];
+            const eyeHeight = maxY - minY;
+            if (eyeHeight < 0.001) return 0.5;
+            return (irisCenter.y - minY) / eyeHeight;
+        }
+
+        // Eye aspect ratio (to detect blinks / closed eyes)
+        function eyeAspectRatio(landmarks, eyeIndices) {
+            // Vertical distances
+            const v1 = Math.abs(landmarks[eyeIndices[1]].y - landmarks[eyeIndices[5]].y);
+            const v2 = Math.abs(landmarks[eyeIndices[2]].y - landmarks[eyeIndices[4]].y);
+            // Horizontal distance
+            const h = Math.abs(landmarks[eyeIndices[0]].x - landmarks[eyeIndices[3]].x);
+            if (h < 0.001) return 0;
+            return (v1 + v2) / (2.0 * h);
+        }
+
+        // Head pose: check if face is turned away
+        function headTurnRatio(landmarks) {
+            const nose = landmarks[NOSE_TIP];
+            const left = landmarks[LEFT_FACE];
+            const right = landmarks[RIGHT_FACE];
+            const faceWidth = right.x - left.x;
+            if (Math.abs(faceWidth) < 0.001) return 0.5;
+            return (nose.x - left.x) / faceWidth;
+        }
+
+        function headTiltRatio(landmarks) {
+            const nose = landmarks[NOSE_TIP];
+            const forehead = landmarks[FOREHEAD];
+            const chin = landmarks[CHIN];
+            const faceHeight = chin.y - forehead.y;
+            if (Math.abs(faceHeight) < 0.001) return 0.5;
+            return (nose.y - forehead.y) / faceHeight;
+        }
+
+        // Draw eye region onto small canvas
+        function drawEyeCloseup(targetCtx, targetCanvas, landmarks, eyeIndices, irisIndices) {
+            const w = video.videoWidth || 640;
+            const h = video.videoHeight || 480;
+
+            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+            for (const i of eyeIndices) {
+                const lm = landmarks[i];
+                const px = lm.x * w;
+                const py = lm.y * h;
+                if (px < minX) minX = px;
+                if (px > maxX) maxX = px;
+                if (py < minY) minY = py;
+                if (py > maxY) maxY = py;
+            }
+
+            const padX = (maxX - minX) * 0.5;
+            const padY = (maxY - minY) * 1.0;
+            const sx = Math.max(0, minX - padX);
+            const sy = Math.max(0, minY - padY);
+            const sw = Math.min(w - sx, (maxX - minX) + 2 * padX);
+            const sh = Math.min(h - sy, (maxY - minY) + 2 * padY);
+
+            targetCtx.clearRect(0, 0, targetCanvas.width, targetCanvas.height);
+            targetCtx.drawImage(video, sx, sy, sw, sh, 0, 0, targetCanvas.width, targetCanvas.height);
+
+            // Draw iris dot
+            const irisCenter = landmarks[irisIndices[0]];
+            const ix = ((irisCenter.x * w) - sx) / sw * targetCanvas.width;
+            const iy = ((irisCenter.y * h) - sy) / sh * targetCanvas.height;
+            targetCtx.beginPath();
+            targetCtx.arc(ix, iy, 3, 0, 2 * Math.PI);
+            targetCtx.fillStyle = '#00ff88';
+            targetCtx.fill();
+        }
+
+        // ─── Main detection callback ───
+        function onResults(results) {
+            if (!tracking) return;
+
+            const w = overlay.width = video.videoWidth || 640;
+            const h = overlay.height = video.videoHeight || 480;
+            ctx.clearRect(0, 0, w, h);
+
+            if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) {
+                setStatus('no-face', '🚫', 'No Face Detected', 'Please position your face in view');
+                return;
+            }
+
+            const landmarks = results.multiFaceLandmarks[0];
+            const sensIdx = parseInt(sensitivityInput.value) - 1;
+
+            // ─── Draw face mesh (subtle) ───
+            ctx.strokeStyle = 'rgba(100, 200, 255, 0.15)';
+            ctx.lineWidth = 0.5;
+            // Draw eye contours
+            drawContour(ctx, landmarks, LEFT_EYE, w, h, 'rgba(0, 230, 118, 0.6)');
+            drawContour(ctx, landmarks, RIGHT_EYE, w, h, 'rgba(0, 230, 118, 0.6)');
+
+            // Draw iris points
+            drawIris(ctx, landmarks, LEFT_IRIS, w, h, '#00ff88');
+            drawIris(ctx, landmarks, RIGHT_IRIS, w, h, '#00ff88');
+
+            // ─── Compute gaze metrics ───
+            const leftRatioX  = irisRatio(landmarks, LEFT_EYE, LEFT_IRIS);
+            const rightRatioX = irisRatio(landmarks, RIGHT_EYE, RIGHT_IRIS);
+            const leftRatioY  = irisRatioY(landmarks, LEFT_EYE, LEFT_IRIS);
+            const rightRatioY = irisRatioY(landmarks, RIGHT_EYE, RIGHT_IRIS);
+            const avgRatioX   = (leftRatioX + rightRatioX) / 2;
+            const avgRatioY   = (leftRatioY + rightRatioY) / 2;
+
+            // Head pose
+            const headTurn = headTurnRatio(landmarks);
+            const headTilt = headTiltRatio(landmarks);
+
+            // EAR for blink detection
+            const leftEAR  = eyeAspectRatio(landmarks, LEFT_EYE);
+            const rightEAR = eyeAspectRatio(landmarks, RIGHT_EYE);
+            const avgEAR   = (leftEAR + rightEAR) / 2;
+
+            // Draw eye close-ups
+            drawEyeCloseup(leftEyeCtx, leftEyeCanvas, landmarks, LEFT_EYE, LEFT_IRIS);
+            drawEyeCloseup(rightEyeCtx, rightEyeCanvas, landmarks, RIGHT_EYE, RIGHT_IRIS);
+
+            // ─── Determine focus ───
+            const irisThreshold = SENS_THRESHOLDS[sensIdx];
+            const headThreshold = HEAD_THRESHOLDS[sensIdx];
+
+            // Iris centered around 0.5 means looking at screen
+            const irisDeviationX = Math.abs(avgRatioX - 0.5);
+            const irisDeviationY = Math.abs(avgRatioY - 0.45); // slightly above center is normal
+            const headDeviationX = Math.abs(headTurn - 0.5);
+            const headDeviationY = Math.abs(headTilt - 0.38);
+
+            const eyesClosed = avgEAR < 0.15;
+            const lookingAway = irisDeviationX > irisThreshold || irisDeviationY > (irisThreshold * 1.2);
+            const headTurned  = headDeviationX > headThreshold || headDeviationY > (headThreshold * 1.0);
+
+            const isFocused = !eyesClosed && !lookingAway && !headTurned;
+
+            // Draw gaze indicator on overlay
+            const gazeX = w / 2 + (avgRatioX - 0.5) * w * 0.8;
+            const gazeY = h / 2 + (avgRatioY - 0.45) * h * 0.8;
+            ctx.beginPath();
+            ctx.arc(gazeX, gazeY, 12, 0, 2 * Math.PI);
+            ctx.fillStyle = isFocused ? 'rgba(0, 230, 118, 0.4)' : 'rgba(255, 82, 82, 0.4)';
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(gazeX, gazeY, 4, 0, 2 * Math.PI);
+            ctx.fillStyle = isFocused ? '#00e676' : '#ff5252';
+            ctx.fill();
+
+            // ─── Update state ───
+            const now = Date.now();
+            if (isFocused) {
+                if (!lastFocused) {
+                    lastFocusStamp = now;
+                    addLog('Focused on screen', 'log-focused');
+                }
+                setStatus('focused', '👁️', 'Focused', detailText(irisDeviationX, headDeviationX));
+            } else {
+                if (lastFocused && lastFocusStamp) {
+                    totalFocusMs += (now - lastFocusStamp);
+                }
+                if (lastFocused) {
+                    distractionCount++;
+                    distractionEl.textContent = distractionCount;
+                    const reason = eyesClosed ? 'Eyes closed' : lookingAway ? 'Looking away' : 'Head turned';
+                    addLog(`Distracted — ${reason}`, 'log-away');
+                }
+                const reason = eyesClosed ? 'Eyes appear closed' :
+                               lookingAway ? 'Eyes looking away from screen' :
+                               'Head turned away';
+                setStatus('not-focused', '😵', 'Not Focused', reason);
+            }
+            lastFocused = isFocused;
+
+            // Update accumulators
+            if (isFocused && lastFocusStamp) {
+                const currentFocus = totalFocusMs + (now - lastFocusStamp);
+                const elapsed = now - sessionStart;
+                focusTimeEl.textContent = fmtTime(currentFocus);
+                const rate = elapsed > 0 ? Math.round((currentFocus / elapsed) * 100) : 0;
+                focusRateEl.textContent = rate + '%';
+                progressFill.style.width = rate + '%';
+                progressFill.style.background = rate > 70 ? '#00e676' : rate > 40 ? '#ffc107' : '#ff5252';
+            }
+            sessionTimeEl.textContent = fmtTime(now - sessionStart);
+        }
+
+        function detailText(irisDeviation, headDeviation) {
+            const conf = Math.max(0, Math.round((1 - (irisDeviation + headDeviation)) * 100));
+            return `Confidence: ${conf}%`;
+        }
+
+        function setStatus(cls, icon, text, detail) {
+            statusCard.className = 'card status-card ' + cls;
+            statusIcon.textContent = icon;
+            statusText.textContent = text;
+            statusDetail.textContent = detail;
+        }
+
+        function drawContour(c, lm, indices, w, h, color) {
+            c.strokeStyle = color;
+            c.lineWidth = 1.5;
+            c.beginPath();
+            for (let i = 0; i < indices.length; i++) {
+                const p = lm[indices[i]];
+                if (i === 0) c.moveTo(p.x * w, p.y * h);
+                else c.lineTo(p.x * w, p.y * h);
+            }
+            c.closePath();
+            c.stroke();
+        }
+
+        function drawIris(c, lm, indices, w, h, color) {
+            c.fillStyle = color;
+            for (const i of indices) {
+                const p = lm[i];
+                c.beginPath();
+                c.arc(p.x * w, p.y * h, 2, 0, 2 * Math.PI);
+                c.fill();
+            }
+        }
+
+        // ─── Start / Stop ───
+        async function startTracking() {
+            if (tracking) {
+                stopTracking();
+                return;
+            }
+
+            startBtn.textContent = 'Loading model...';
+            startBtn.disabled = true;
+
+            try {
+                // Initialize FaceMesh
+                faceMesh = new FaceMesh({
+                    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
+                });
+                faceMesh.setOptions({
+                    maxNumFaces: 1,
+                    refineLandmarks: true, // enables iris landmarks
+                    minDetectionConfidence: 0.5,
+                    minTrackingConfidence: 0.5
+                });
+                faceMesh.onResults(onResults);
+
+                // Start camera
+                camera = new Camera(video, {
+                    onFrame: async () => {
+                        if (tracking) await faceMesh.send({ image: video });
+                    },
+                    width: 640,
+                    height: 480
+                });
+                await camera.start();
+
+                // Reset state
+                tracking = true;
+                sessionStart = Date.now();
+                totalFocusMs = 0;
+                lastFocused = false;
+                lastFocusStamp = null;
+                distractionCount = 0;
+                distractionEl.textContent = '0';
+                logList.innerHTML = '';
+                addLog('Tracking started', 'log-focused');
+
+                startBtn.textContent = 'Stop Tracking';
+                startBtn.className = 'btn btn-danger';
+                startBtn.disabled = false;
+            } catch (err) {
+                console.error(err);
+                setStatus('no-face', '❌', 'Error', 'Camera access denied or unavailable');
+                startBtn.textContent = 'Start Tracking';
+                startBtn.disabled = false;
+            }
+        }
+
+        function stopTracking() {
+            tracking = false;
+            if (lastFocused && lastFocusStamp) {
+                totalFocusMs += (Date.now() - lastFocusStamp);
+            }
+            if (camera) camera.stop();
+            ctx.clearRect(0, 0, overlay.width, overlay.height);
+            addLog('Tracking stopped', 'log-away');
+            setStatus('no-face', '⏸️', 'Stopped', 'Click Start to resume');
+            startBtn.textContent = 'Start Tracking';
+            startBtn.className = 'btn btn-primary';
+        }
+    </script>
+</body>
+</html>
