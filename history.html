@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Focus Session History</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --bg: #0f0f1a;
+            --panel: #1a1a2e;
+            --border: #2a2a3e;
+            --text: #e0e0e0;
+            --muted: #8a8aa3;
+            --accent: #00d4ff;
+            --accent2: #7b2ff7;
+            --good: #00e676;
+            --warn: #ffc107;
+            --bad: #ff5252;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: radial-gradient(circle at top right, #1d1d34, var(--bg) 42%);
+            color: var(--text);
+            min-height: 100vh;
+            padding: 24px;
+        }
+
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            font-size: 1.8rem;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, var(--accent), var(--accent2));
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .subtitle {
+            color: var(--muted);
+            margin-bottom: 20px;
+        }
+
+        .card {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 18px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+            margin-bottom: 16px;
+        }
+
+        .toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            align-items: end;
+        }
+
+        .field {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            min-width: 190px;
+        }
+
+        .field label {
+            font-size: 0.8rem;
+            color: var(--muted);
+        }
+
+        input[type="date"] {
+            background: #121226;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 10px;
+            color: var(--text);
+        }
+
+        .btn {
+            border: none;
+            border-radius: 10px;
+            padding: 10px 14px;
+            font-weight: 600;
+            cursor: pointer;
+            color: #fff;
+            background: linear-gradient(135deg, var(--accent), var(--accent2));
+        }
+
+        .btn-secondary {
+            background: #2f325a;
+        }
+
+        .summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 12px;
+        }
+
+        .stat {
+            background: #121226;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 12px;
+        }
+
+        .stat .label {
+            display: block;
+            color: var(--muted);
+            font-size: 0.78rem;
+            margin-bottom: 6px;
+        }
+
+        .stat .value {
+            font-weight: 700;
+            font-size: 1.1rem;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            text-align: left;
+            padding: 10px;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.9rem;
+        }
+
+        th {
+            color: var(--muted);
+            font-weight: 600;
+        }
+
+        .rate-good { color: var(--good); }
+        .rate-mid { color: var(--warn); }
+        .rate-low { color: var(--bad); }
+
+        .empty {
+            color: var(--muted);
+            font-size: 0.9rem;
+            padding: 12px;
+            border: 1px dashed var(--border);
+            border-radius: 10px;
+        }
+
+        @media (max-width: 720px) {
+            body { padding: 14px; }
+            th, td { font-size: 0.8rem; padding: 8px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Focus Session History</h1>
+        <div class="subtitle">Filter saved focus sessions by date and review performance trends.</div>
+
+        <div class="card">
+            <div class="toolbar">
+                <div class="field">
+                    <label for="fromDate">From</label>
+                    <input id="fromDate" type="date">
+                </div>
+                <div class="field">
+                    <label for="toDate">To</label>
+                    <input id="toDate" type="date">
+                </div>
+                <button class="btn" id="applyBtn">Apply Filter</button>
+                <button class="btn btn-secondary" id="clearBtn">Clear</button>
+                <button class="btn btn-secondary" id="backBtn">Back to Tracker</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="summary">
+                <div class="stat">
+                    <span class="label">Total Sessions</span>
+                    <span class="value" id="sumSessions">0</span>
+                </div>
+                <div class="stat">
+                    <span class="label">Average Focus Rate</span>
+                    <span class="value" id="sumRate">0%</span>
+                </div>
+                <div class="stat">
+                    <span class="label">Total Focus Time</span>
+                    <span class="value" id="sumFocus">00:00</span>
+                </div>
+                <div class="stat">
+                    <span class="label">Total Distractions</span>
+                    <span class="value" id="sumDistractions">0</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div id="emptyState" class="empty" style="display:none;">No sessions found for the selected date range.</div>
+            <table id="historyTable">
+                <thead>
+                    <tr>
+                        <th>Ended At</th>
+                        <th>Session</th>
+                        <th>Focus</th>
+                        <th>Focus Rate</th>
+                        <th>Distractions</th>
+                    </tr>
+                </thead>
+                <tbody id="historyBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        const fromDateEl = document.getElementById('fromDate');
+        const toDateEl = document.getElementById('toDate');
+        const applyBtn = document.getElementById('applyBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const backBtn = document.getElementById('backBtn');
+        const emptyStateEl = document.getElementById('emptyState');
+        const tableEl = document.getElementById('historyTable');
+        const historyBodyEl = document.getElementById('historyBody');
+
+        const sumSessionsEl = document.getElementById('sumSessions');
+        const sumRateEl = document.getElementById('sumRate');
+        const sumFocusEl = document.getElementById('sumFocus');
+        const sumDistractionsEl = document.getElementById('sumDistractions');
+
+        function fmtTime(ms) {
+            const s = Math.floor(ms / 1000);
+            const h = Math.floor(s / 3600);
+            const m = Math.floor((s % 3600) / 60);
+            const sec = s % 60;
+            if (h > 0) {
+                return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+            }
+            return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+        }
+
+        function rateClass(rate) {
+            if (rate >= 70) return 'rate-good';
+            if (rate >= 40) return 'rate-mid';
+            return 'rate-low';
+        }
+
+        function queryForFilters() {
+            const params = new URLSearchParams();
+            if (fromDateEl.value) params.set('from', fromDateEl.value);
+            if (toDateEl.value) params.set('to', toDateEl.value);
+            const query = params.toString();
+            return query ? `?${query}` : '';
+        }
+
+        async function loadHistory() {
+            try {
+                const response = await fetch(`/api/focus-sessions${queryForFilters()}`);
+                if (!response.ok) {
+                    throw new Error('Could not load history');
+                }
+
+                const data = await response.json();
+                const sessions = data.sessions || [];
+                const summary = data.summary || {};
+
+                sumSessionsEl.textContent = summary.total_sessions || 0;
+                sumRateEl.textContent = `${Math.round(summary.avg_focus_rate || 0)}%`;
+                sumFocusEl.textContent = fmtTime(summary.total_focus_ms || 0);
+                sumDistractionsEl.textContent = summary.total_distractions || 0;
+
+                historyBodyEl.innerHTML = '';
+                if (!sessions.length) {
+                    emptyStateEl.style.display = 'block';
+                    tableEl.style.display = 'none';
+                    return;
+                }
+
+                emptyStateEl.style.display = 'none';
+                tableEl.style.display = 'table';
+
+                for (const session of sessions) {
+                    const tr = document.createElement('tr');
+                    const rate = Math.round(session.focus_rate || 0);
+                    tr.innerHTML = `
+                        <td>${new Date(session.ended_at).toLocaleString()}</td>
+                        <td>${fmtTime(session.session_ms || 0)}</td>
+                        <td>${fmtTime(session.focus_ms || 0)}</td>
+                        <td class="${rateClass(rate)}">${rate}%</td>
+                        <td>${session.distraction_count || 0}</td>
+                    `;
+                    historyBodyEl.appendChild(tr);
+                }
+            } catch (error) {
+                console.error(error);
+                emptyStateEl.style.display = 'block';
+                emptyStateEl.textContent = 'Unable to load session history right now.';
+                tableEl.style.display = 'none';
+            }
+        }
+
+        applyBtn.addEventListener('click', loadHistory);
+        clearBtn.addEventListener('click', () => {
+            fromDateEl.value = '';
+            toDateEl.value = '';
+            loadHistory();
+        });
+        backBtn.addEventListener('click', () => {
+            window.location.href = '/';
+        });
+
+        loadHistory();
+    </script>
+</body>
+</html>

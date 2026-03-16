@@ -281,6 +281,30 @@
                 <div class="log-list" id="logList"></div>
             </div>
 
+            <!-- Saved Stats -->
+            <div class="card">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                    <div style="font-size:0.85rem;color:#888;">Saved Sessions</div>
+                    <div style="display:flex;gap:8px;">
+                        <button class="btn btn-primary" id="historyBtn" style="width:auto;padding:6px 12px;font-size:0.8rem;">History</button>
+                        <button class="btn btn-primary" id="refreshSavedBtn" style="width:auto;padding:6px 12px;font-size:0.8rem;">Refresh</button>
+                    </div>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Total Sessions</span>
+                    <span class="stat-value" id="savedTotalSessions">0</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Avg Focus Rate</span>
+                    <span class="stat-value" id="savedAvgFocusRate">0%</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Total Focus Time</span>
+                    <span class="stat-value" id="savedTotalFocus">00:00</span>
+                </div>
+                <div class="log-list" id="savedSessionsList" style="margin-top:8px;"></div>
+            </div>
+
             <!-- Controls -->
             <button class="btn btn-primary" id="startBtn" onclick="startTracking()">Start Tracking</button>
         </div>
@@ -306,12 +330,18 @@
         const progressFill     = document.getElementById('progressFill');
         const logList          = document.getElementById('logList');
         const startBtn         = document.getElementById('startBtn');
+        const historyBtn       = document.getElementById('historyBtn');
+        const refreshSavedBtn  = document.getElementById('refreshSavedBtn');
         const sensitivityInput = document.getElementById('sensitivity');
         const sensLabel        = document.getElementById('sensLabel');
         const leftEyeCanvas    = document.getElementById('leftEyeCanvas');
         const rightEyeCanvas   = document.getElementById('rightEyeCanvas');
         const leftEyeCtx       = leftEyeCanvas.getContext('2d');
         const rightEyeCtx      = rightEyeCanvas.getContext('2d');
+        const savedTotalSessionsEl = document.getElementById('savedTotalSessions');
+        const savedAvgFocusRateEl  = document.getElementById('savedAvgFocusRate');
+        const savedTotalFocusEl    = document.getElementById('savedTotalFocus');
+        const savedSessionsListEl  = document.getElementById('savedSessionsList');
 
         // ─── State ───
         let tracking        = false;
@@ -323,6 +353,10 @@
         let focusHistory     = [];  // rolling window
         let camera           = null;
         let faceMesh         = null;
+        let autoSaveTimer     = null;
+        let clientSessionId   = null;
+
+        const AUTO_SAVE_MS = 15000;
 
         // MediaPipe Face Mesh landmark indices
         // Left eye contour
@@ -368,6 +402,104 @@
             // Keep max 50 entries
             while (logList.children.length > 50) logList.removeChild(logList.lastChild);
         }
+
+        function currentFocusMs(nowTs) {
+            if (lastFocused && lastFocusStamp) {
+                return totalFocusMs + (nowTs - lastFocusStamp);
+            }
+            return totalFocusMs;
+        }
+
+        function makeClientSessionId() {
+            if (window.crypto && crypto.randomUUID) {
+                return crypto.randomUUID();
+            }
+            return `session-${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
+        }
+
+        async function saveCurrentSession(options = {}) {
+            const isFinal = options.isFinal === true;
+            if (!sessionStart || !clientSessionId) return;
+
+            const endedAtMs = Date.now();
+            const sessionMs = Math.max(0, endedAtMs - sessionStart);
+            const focusMs = Math.min(currentFocusMs(endedAtMs), sessionMs);
+            const focusRate = sessionMs > 0 ? (focusMs / sessionMs) * 100 : 0;
+
+            const payload = {
+                startedAt: new Date(sessionStart).toISOString(),
+                endedAt: new Date(endedAtMs).toISOString(),
+                sessionMs,
+                focusMs,
+                focusRate,
+                distractionCount,
+                clientSessionId
+            };
+
+            try {
+                const response = await fetch('/api/focus-sessions', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if (!response.ok) {
+                    throw new Error('Failed to save session');
+                }
+                if (isFinal) {
+                    addLog('Session saved to database', 'log-focused');
+                    await loadSavedStats();
+                }
+            } catch (error) {
+                console.error(error);
+                if (isFinal) {
+                    addLog('Could not save session to database', 'log-away');
+                }
+            }
+        }
+
+        function renderSavedSessions(items) {
+            savedSessionsListEl.innerHTML = '';
+            if (!items.length) {
+                const emptyEl = document.createElement('div');
+                emptyEl.className = 'log-item';
+                emptyEl.textContent = 'No saved sessions yet';
+                savedSessionsListEl.appendChild(emptyEl);
+                return;
+            }
+
+            for (const session of items.slice(0, 8)) {
+                const item = document.createElement('div');
+                item.className = 'log-item';
+                const endTime = new Date(session.ended_at).toLocaleString();
+                const summary = `${Math.round(session.focus_rate)}% focus | ${fmtTime(session.focus_ms)} | distractions ${session.distraction_count}`;
+                item.innerHTML = `<span class="time">${endTime}</span>${summary}`;
+                savedSessionsListEl.appendChild(item);
+            }
+        }
+
+        async function loadSavedStats() {
+            try {
+                const response = await fetch('/api/focus-sessions');
+                if (!response.ok) {
+                    throw new Error('Failed to load saved stats');
+                }
+                const data = await response.json();
+                const summary = data.summary || {};
+
+                savedTotalSessionsEl.textContent = summary.total_sessions || 0;
+                savedAvgFocusRateEl.textContent = `${Math.round(summary.avg_focus_rate || 0)}%`;
+                savedTotalFocusEl.textContent = fmtTime(summary.total_focus_ms || 0);
+                renderSavedSessions(data.sessions || []);
+            } catch (error) {
+                console.error(error);
+                savedSessionsListEl.innerHTML = '<div class="log-item">Unable to load saved sessions</div>';
+            }
+        }
+
+        refreshSavedBtn.addEventListener('click', loadSavedStats);
+        historyBtn.addEventListener('click', () => {
+            window.location.href = '/history';
+        });
 
         // Compute iris position ratio within eye (0 = left edge, 1 = right edge)
         function irisRatio(landmarks, eyeIndices, irisIndices) {
@@ -654,9 +786,20 @@
                 lastFocused = false;
                 lastFocusStamp = null;
                 distractionCount = 0;
+                clientSessionId = makeClientSessionId();
                 distractionEl.textContent = '0';
                 logList.innerHTML = '';
                 addLog('Tracking started', 'log-focused');
+                addLog(`Auto-save every ${Math.floor(AUTO_SAVE_MS / 1000)}s`, 'log-focused');
+
+                if (autoSaveTimer) {
+                    clearInterval(autoSaveTimer);
+                }
+                autoSaveTimer = setInterval(() => {
+                    if (tracking) {
+                        saveCurrentSession();
+                    }
+                }, AUTO_SAVE_MS);
 
                 startBtn.textContent = 'Stop Tracking';
                 startBtn.className = 'btn btn-danger';
@@ -669,18 +812,28 @@
             }
         }
 
-        function stopTracking() {
+        async function stopTracking() {
             tracking = false;
             if (lastFocused && lastFocusStamp) {
                 totalFocusMs += (Date.now() - lastFocusStamp);
             }
+
+            if (autoSaveTimer) {
+                clearInterval(autoSaveTimer);
+                autoSaveTimer = null;
+            }
+
             if (camera) camera.stop();
             ctx.clearRect(0, 0, overlay.width, overlay.height);
             addLog('Tracking stopped', 'log-away');
             setStatus('no-face', '⏸️', 'Stopped', 'Click Start to resume');
             startBtn.textContent = 'Start Tracking';
             startBtn.className = 'btn btn-primary';
+
+            await saveCurrentSession({ isFinal: true });
         }
+
+        loadSavedStats();
     </script>
 </body>
 </html>
