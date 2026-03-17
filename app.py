@@ -46,11 +46,13 @@ def get_conn():
 
 
 @app.route('/', methods=['GET'])
+@app.route('/index.html', methods=['GET'])
 def index():
     return send_from_directory('.', 'index.html')
 
 
 @app.route('/history', methods=['GET'])
+@app.route('/history.html', methods=['GET'])
 def history_page():
     return send_from_directory('.', 'history.html')
 
