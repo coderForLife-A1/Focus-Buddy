@@ -10,13 +10,13 @@
 Clone the project
 
 ```bash
-  git clone https://link-to-project
+  git clone https://github.com/coderForLife-A1/Focus-Buddy
 ```
 
 Go to the project directory
 
 ```bash
-  cd my-project
+  cd project-directory-address
 ```
 
 Install Flask (if not installed already)
