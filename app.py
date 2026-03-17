@@ -214,5 +214,18 @@ def list_focus_sessions():
     sessions = [dict(row) for row in rows]
     return jsonify({'sessions': sessions, 'summary': dict(summary)})
 
+
+@app.route('/api/focus-sessions', methods=['DELETE'])
+def delete_all_focus_sessions():
+    """Delete all focus sessions from the database."""
+    try:
+        conn = get_conn()
+        conn.execute('DELETE FROM focus_sessions')
+        conn.commit()
+        conn.close()
+        return jsonify({'ok': True, 'message': 'All history cleared successfully'}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 if __name__ == '__main__':
     app.run(debug=True)
