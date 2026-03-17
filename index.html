@@ -40,18 +40,129 @@
             padding: 0 20px 40px;
         }
 
+        .tracking-area {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+        }
+
+        .timer-card {
+            width: 220px;
+            background: #1a1a2e;
+            border-radius: 16px;
+            padding: 18px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+            border: 1px solid #2a2a3e;
+        }
+
+        .timer-title {
+            font-size: 0.9rem;
+            color: #9aa0b5;
+            margin-bottom: 10px;
+        }
+
+        .timer-inputs {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+
+        .timer-inputs label {
+            font-size: 0.75rem;
+            color: #888;
+            margin-bottom: 4px;
+            display: block;
+        }
+
+        .timer-inputs input {
+            width: 100%;
+            border: 1px solid #2a2a3e;
+            background: #111126;
+            color: #e0e0e0;
+            border-radius: 8px;
+            padding: 8px;
+            font-size: 0.9rem;
+        }
+
+        .timer-actions {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+
+        .timer-btn {
+            flex: 1;
+            border: none;
+            border-radius: 8px;
+            padding: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            color: #fff;
+        }
+
+        .timer-btn.set {
+            background: linear-gradient(135deg, #00d4ff, #7b2ff7);
+        }
+
+        .timer-btn.clear {
+            background: #3a3a52;
+        }
+
+        .timer-meta {
+            font-size: 0.78rem;
+            color: #9aa0b5;
+            line-height: 1.5;
+        }
+
+        .timer-countdown {
+            margin-top: 8px;
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: #00e676;
+            letter-spacing: 0.5px;
+        }
+
         .video-panel {
             position: relative;
+            width: 640px;
+            aspect-ratio: 4 / 3;
             border-radius: 16px;
             overflow: hidden;
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
             border: 2px solid #222;
         }
 
+        .session-over-screen {
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(circle at top right, #22263f, #121423 60%);
+            color: #e0e0e0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 24px;
+        }
+
+        .session-over-screen.show {
+            display: flex;
+        }
+
+        .session-over-screen h2 {
+            font-size: 2rem;
+            margin-bottom: 8px;
+        }
+
+        .session-over-screen p {
+            color: #a3abc5;
+            font-size: 1rem;
+        }
+
         video, canvas {
             display: block;
-            width: 640px;
-            height: 480px;
+            width: 100%;
+            height: 100%;
         }
 
         canvas {
@@ -205,8 +316,23 @@
         }
 
         @media (max-width: 1000px) {
+            .tracking-area {
+                width: 100%;
+                max-width: 640px;
+                flex-direction: column;
+                align-items: center;
+            }
+
+            .timer-card {
+                width: 100%;
+            }
+
             video, canvas { width: 100%; height: auto; }
-            .video-panel { width: 100%; max-width: 640px; }
+            .video-panel {
+                width: 100%;
+                max-width: 640px;
+                aspect-ratio: 4 / 3;
+            }
             .info-panel { width: 100%; max-width: 640px; }
         }
     </style>
@@ -216,9 +342,37 @@
     <p class="subtitle">Real-time gaze detection &mdash; are you looking at the screen?</p>
 
     <div class="main-container">
-        <div class="video-panel">
-            <video id="video" playsinline></video>
-            <canvas id="overlay"></canvas>
+        <div class="tracking-area">
+            <div class="timer-card">
+                <div class="timer-title">Focus Session Timer</div>
+                <div class="timer-inputs">
+                    <div>
+                        <label for="sessionMinutes">Minutes</label>
+                        <input id="sessionMinutes" type="number" min="0" max="300" value="25">
+                    </div>
+                    <div>
+                        <label for="sessionSeconds">Seconds</label>
+                        <input id="sessionSeconds" type="number" min="0" max="59" value="0">
+                    </div>
+                </div>
+                <div class="timer-actions">
+                    <button id="setTimerBtn" class="timer-btn set">Set</button>
+                    <button id="clearTimerBtn" class="timer-btn clear">Clear</button>
+                </div>
+                <div class="timer-meta" id="timerConfigText">Configured: 25m 00s</div>
+                <div class="timer-countdown" id="timerCountdown">Not running</div>
+            </div>
+
+            <div class="video-panel">
+                <video id="video" playsinline></video>
+                <canvas id="overlay"></canvas>
+                <div id="sessionOverScreen" class="session-over-screen">
+                    <div>
+                        <h2>Session Over</h2>
+                        <p>Your focus session has ended and data has been saved.</p>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <div class="info-panel">
@@ -342,6 +496,13 @@
         const savedAvgFocusRateEl  = document.getElementById('savedAvgFocusRate');
         const savedTotalFocusEl    = document.getElementById('savedTotalFocus');
         const savedSessionsListEl  = document.getElementById('savedSessionsList');
+        const sessionMinutesInput  = document.getElementById('sessionMinutes');
+        const sessionSecondsInput  = document.getElementById('sessionSeconds');
+        const setTimerBtn          = document.getElementById('setTimerBtn');
+        const clearTimerBtn        = document.getElementById('clearTimerBtn');
+        const timerConfigText      = document.getElementById('timerConfigText');
+        const timerCountdown       = document.getElementById('timerCountdown');
+        const sessionOverScreen    = document.getElementById('sessionOverScreen');
 
         // ─── State ───
         let tracking        = false;
@@ -355,6 +516,10 @@
         let faceMesh         = null;
         let autoSaveTimer     = null;
         let clientSessionId   = null;
+        let sessionLimitMs    = 25 * 60 * 1000;
+        let sessionEndAt      = null;
+        let sessionEndTimer   = null;
+        let countdownTimer    = null;
 
         const AUTO_SAVE_MS = 15000;
 
@@ -390,6 +555,137 @@
             const s = Math.floor(ms / 1000);
             const m = Math.floor(s / 60);
             return `${String(m).padStart(2,'0')}:${String(s % 60).padStart(2,'0')}`;
+        }
+
+        function fmtCountdown(ms) {
+            const total = Math.max(0, Math.floor(ms / 1000));
+            const h = Math.floor(total / 3600);
+            const m = Math.floor((total % 3600) / 60);
+            const s = total % 60;
+            if (h > 0) {
+                return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+            }
+            return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+        }
+
+        function configuredTimerText() {
+            const totalSeconds = Math.floor(sessionLimitMs / 1000);
+            const minutes = Math.floor(totalSeconds / 60);
+            const seconds = totalSeconds % 60;
+            return `Configured: ${minutes}m ${String(seconds).padStart(2, '0')}s`;
+        }
+
+        function updateCountdown() {
+            if (!tracking || !sessionEndAt) {
+                timerCountdown.textContent = 'Not running';
+                return;
+            }
+            const remaining = sessionEndAt - Date.now();
+            timerCountdown.textContent = `Remaining: ${fmtCountdown(remaining)}`;
+        }
+
+        function setTimerControlsDisabled(isDisabled) {
+            sessionMinutesInput.disabled = isDisabled;
+            sessionSecondsInput.disabled = isDisabled;
+            setTimerBtn.disabled = isDisabled;
+            clearTimerBtn.disabled = isDisabled;
+        }
+
+        function showSessionOverScreen(show) {
+            if (show) {
+                video.style.display = 'none';
+                overlay.style.display = 'none';
+                sessionOverScreen.classList.add('show');
+                return;
+            }
+            video.style.display = 'block';
+            overlay.style.display = 'block';
+            sessionOverScreen.classList.remove('show');
+        }
+
+        function playSessionEndBeep() {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (!AudioCtx) return;
+
+            try {
+                const audioCtx = new AudioCtx();
+                const now = audioCtx.currentTime;
+                const frequencies = [880, 988, 1046];
+
+                frequencies.forEach((freq, idx) => {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    const start = now + idx * 0.15;
+                    const stop = start + 0.1;
+
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(freq, start);
+                    gain.gain.setValueAtTime(0.0001, start);
+                    gain.gain.exponentialRampToValueAtTime(0.12, start + 0.01);
+                    gain.gain.exponentialRampToValueAtTime(0.0001, stop);
+
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start(start);
+                    osc.stop(stop);
+                });
+
+                setTimeout(() => audioCtx.close(), 900);
+            } catch (error) {
+                console.error(error);
+            }
+        }
+
+        function applyConfiguredTimer() {
+            const minutes = Number(sessionMinutesInput.value);
+            const seconds = Number(sessionSecondsInput.value);
+
+            if (!Number.isFinite(minutes) || !Number.isFinite(seconds)) {
+                addLog('Invalid timer values', 'log-away');
+                return;
+            }
+
+            const safeMinutes = Math.max(0, Math.floor(minutes));
+            const safeSeconds = Math.max(0, Math.min(59, Math.floor(seconds)));
+            const totalMs = ((safeMinutes * 60) + safeSeconds) * 1000;
+
+            if (totalMs <= 0) {
+                addLog('Timer must be at least 1 second', 'log-away');
+                return;
+            }
+
+            sessionMinutesInput.value = String(safeMinutes);
+            sessionSecondsInput.value = String(safeSeconds);
+            sessionLimitMs = totalMs;
+            timerConfigText.textContent = configuredTimerText();
+            addLog(`Session timer set to ${safeMinutes}m ${String(safeSeconds).padStart(2, '0')}s`, 'log-focused');
+        }
+
+        function clearConfiguredTimer() {
+            sessionLimitMs = 25 * 60 * 1000;
+            sessionMinutesInput.value = '25';
+            sessionSecondsInput.value = '0';
+            timerConfigText.textContent = configuredTimerText();
+            addLog('Session timer reset to 25m 00s', 'log-away');
+        }
+
+        function clearSessionTimers() {
+            if (sessionEndTimer) {
+                clearTimeout(sessionEndTimer);
+                sessionEndTimer = null;
+            }
+            if (countdownTimer) {
+                clearInterval(countdownTimer);
+                countdownTimer = null;
+            }
+            sessionEndAt = null;
+        }
+
+        async function endSessionByTimer() {
+            if (!tracking) return;
+            playSessionEndBeep();
+            addLog('Focus timer finished', 'log-away');
+            await stopTracking({ endedByTimer: true });
         }
 
         function addLog(msg, cls) {
@@ -500,6 +796,8 @@
         historyBtn.addEventListener('click', () => {
             window.location.href = 'history.html';
         });
+        setTimerBtn.addEventListener('click', applyConfiguredTimer);
+        clearTimerBtn.addEventListener('click', clearConfiguredTimer);
 
         // Compute iris position ratio within eye (0 = left edge, 1 = right edge)
         function irisRatio(landmarks, eyeIndices, irisIndices) {
@@ -753,6 +1051,8 @@
                 return;
             }
 
+            showSessionOverScreen(false);
+
             startBtn.textContent = 'Loading model...';
             startBtn.disabled = true;
 
@@ -791,6 +1091,20 @@
                 logList.innerHTML = '';
                 addLog('Tracking started', 'log-focused');
                 addLog(`Auto-save every ${Math.floor(AUTO_SAVE_MS / 1000)}s`, 'log-focused');
+                addLog(configuredTimerText(), 'log-focused');
+
+                sessionEndAt = sessionStart + sessionLimitMs;
+                updateCountdown();
+                setTimerControlsDisabled(true);
+
+                sessionEndTimer = setTimeout(() => {
+                    endSessionByTimer();
+                }, sessionLimitMs);
+
+                countdownTimer = setInterval(() => {
+                    if (!tracking) return;
+                    updateCountdown();
+                }, 250);
 
                 if (autoSaveTimer) {
                     clearInterval(autoSaveTimer);
@@ -809,10 +1123,12 @@
                 setStatus('no-face', '❌', 'Error', 'Camera access denied or unavailable');
                 startBtn.textContent = 'Start Tracking';
                 startBtn.disabled = false;
+                setTimerControlsDisabled(false);
             }
         }
 
-        async function stopTracking() {
+        async function stopTracking(options = {}) {
+            const endedByTimer = options.endedByTimer === true;
             tracking = false;
             if (lastFocused && lastFocusStamp) {
                 totalFocusMs += (Date.now() - lastFocusStamp);
@@ -823,16 +1139,28 @@
                 autoSaveTimer = null;
             }
 
+            clearSessionTimers();
+            setTimerControlsDisabled(false);
+
             if (camera) camera.stop();
             ctx.clearRect(0, 0, overlay.width, overlay.height);
-            addLog('Tracking stopped', 'log-away');
-            setStatus('no-face', '⏸️', 'Stopped', 'Click Start to resume');
+            if (endedByTimer) {
+                addLog('Session ended automatically', 'log-away');
+                showSessionOverScreen(true);
+                setStatus('no-face', '✅', 'Session Over', 'Time completed and data saved');
+            } else {
+                addLog('Tracking stopped', 'log-away');
+                showSessionOverScreen(false);
+                setStatus('no-face', '⏸️', 'Stopped', 'Click Start to resume');
+            }
+            timerCountdown.textContent = 'Not running';
             startBtn.textContent = 'Start Tracking';
             startBtn.className = 'btn btn-primary';
 
             await saveCurrentSession({ isFinal: true });
         }
 
+        timerConfigText.textContent = configuredTimerText();
         loadSavedStats();
     </script>
 </body>
