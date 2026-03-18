@@ -1,0 +1,117 @@
+# ========================
+# Python
+# ========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# ========================
+# Flask
+# ========================
+instance/
+.webassets-cache
+flask_session/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# ========================
+# SQLite
+# ========================
+*.sqlite
+*.sqlite3
+*.db
+*.db-shm
+*.db-wal
+
+# ========================
+# JavaScript / Node
+# ========================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.yarn-integrity
+package-lock.json
+yarn.lock
+
+# ========================
+# HTML / CSS / Frontend
+# ========================
+# Compiled/minified assets
+*.min.js
+*.min.css
+dist/
+.cache/
+.parcel-cache/
+
+# ========================
+# OS & Editor Files
+# ========================
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# ========================
+# Logs & Temp Files
+# ========================
+*.log
+*.pot
+*.tmp
+tmp/
+temp/
+
+# ========================
+# Testing & Coverage
+# ========================
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
