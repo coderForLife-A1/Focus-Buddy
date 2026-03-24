@@ -332,41 +332,53 @@
         .todo-input-row {
             display: flex;
             gap: 8px;
-            margin-bottom: 10px;
+            margin-bottom: 12px;
         }
 
         .todo-input-row input {
             flex: 1;
-            border: 1px solid #2a2a3e;
-            background: #111126;
+            border: 1px solid #35406b;
+            background: rgba(10, 13, 28, 0.95);
             color: #e0e0e0;
-            border-radius: 8px;
-            padding: 8px;
-            font-size: 0.9rem;
+            border-radius: 10px;
+            padding: 10px 12px;
+            font-size: 0.95rem;
+        }
+
+        .todo-input-row input::placeholder {
+            color: #8992b4;
         }
 
         .todo-list {
             list-style: none;
-            max-height: 200px;
+            max-height: 260px;
+            min-height: 140px;
             overflow-y: auto;
             display: flex;
             flex-direction: column;
-            gap: 8px;
+            gap: 10px;
+            padding-right: 2px;
         }
 
         .todo-item {
             display: flex;
             align-items: center;
-            gap: 8px;
-            background: #111126;
-            border: 1px solid #2a2a3e;
-            border-radius: 10px;
-            padding: 8px 10px;
+            gap: 10px;
+            background: rgba(13, 17, 36, 0.9);
+            border: 1px solid #2f3a60;
+            border-radius: 12px;
+            padding: 10px 12px;
+        }
+
+        .todo-item input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            accent-color: #00d4ff;
         }
 
         .todo-title {
             flex: 1;
-            font-size: 0.88rem;
+            font-size: 0.92rem;
             word-break: break-word;
         }
 
@@ -377,21 +389,43 @@
 
         .todo-delete {
             border: none;
-            border-radius: 6px;
+            border-radius: 8px;
             background: #ff5252;
             color: #fff;
-            font-size: 0.75rem;
-            padding: 5px 8px;
+            font-size: 0.78rem;
+            font-weight: 600;
+            padding: 6px 10px;
             cursor: pointer;
         }
 
+        .todo-delete:hover {
+            background: #e54646;
+        }
+
         .todo-empty {
-            font-size: 0.82rem;
+            font-size: 0.85rem;
             color: #8a8aa3;
-            border: 1px dashed #2a2a3e;
-            border-radius: 8px;
-            padding: 8px;
+            border: 1px dashed #34406a;
+            border-radius: 10px;
+            padding: 12px;
             text-align: center;
+            background: rgba(11, 15, 32, 0.65);
+        }
+
+        .todo-card {
+            width: 100%;
+            margin-top: 12px;
+            padding: 18px;
+            border-radius: 16px;
+            border: 1px solid #2a2a3e;
+            background: #1a1a2e;
+        }
+
+        .todo-card-title {
+            font-size: 0.98rem;
+            color: #d8e3ff;
+            font-weight: 600;
+            margin-bottom: 10px;
         }
 
         .software-footer {
@@ -443,6 +477,10 @@
                 width: calc(100% - 24px);
                 margin: 10px 12px 16px;
                 font-size: 0.72rem;
+            }
+
+            .todo-card {
+                margin-top: 10px;
             }
         }
     </style>
@@ -504,16 +542,6 @@
                     <div class="log-list" id="savedSessionsList" style="margin-top:8px;"></div>
                 </div>
 
-                <!-- To-Do -->
-                <div class="card">
-                    <div style="font-size:0.85rem;color:#888;margin-bottom:8px;">To-Do List</div>
-                    <div class="todo-input-row">
-                        <input id="todoInput" type="text" maxlength="160" placeholder="Add a task for this session...">
-                        <button class="btn btn-primary" id="addTodoBtn" style="width:auto;padding:8px 12px;font-size:0.85rem;">Add</button>
-                    </div>
-                    <div id="todoEmpty" class="todo-empty">No tasks yet</div>
-                    <ul id="todoList" class="todo-list"></ul>
-                </div>
             </div>
 
             <div class="video-column">
@@ -528,6 +556,17 @@
                     </div>
                 </div>
                 <button class="btn btn-primary" id="startBtn" onclick="startTracking()">Start Tracking</button>
+
+                <!-- To-Do -->
+                <div class="card todo-card">
+                    <div class="todo-card-title">Session To-Do List</div>
+                    <div class="todo-input-row">
+                        <input id="todoInput" type="text" maxlength="160" placeholder="Add a task for this session...">
+                        <button class="btn btn-primary" id="addTodoBtn" style="width:auto;padding:10px 14px;font-size:0.9rem;">Add</button>
+                    </div>
+                    <div id="todoEmpty" class="todo-empty">No tasks yet</div>
+                    <ul id="todoList" class="todo-list"></ul>
+                </div>
             </div>
         </div>
 
