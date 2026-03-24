@@ -110,10 +110,23 @@
 
         .timer-btn.set {
             background: linear-gradient(135deg, #00d4ff, #7b2ff7);
+            box-shadow: 0 4px 12px rgba(0, 180, 255, 0.28);
+        }
+
+        .timer-btn.set:hover {
+            filter: brightness(1.05);
+            transform: translateY(-1px);
         }
 
         .timer-btn.clear {
-            background: #3a3a52;
+            background: linear-gradient(135deg, #253154, #2f426f);
+            border: 1px solid #3f568f;
+            box-shadow: 0 4px 12px rgba(35, 54, 95, 0.35);
+        }
+
+        .timer-btn.clear:hover {
+            background: linear-gradient(135deg, #2b3a62, #385184);
+            transform: translateY(-1px);
         }
 
         .timer-meta {
@@ -305,6 +318,30 @@
             font-size: 0.8rem;
         }
 
+        #savedSessionsList {
+            scrollbar-width: thin;
+            scrollbar-color: #4c5f98 #131a31;
+        }
+
+        #savedSessionsList::-webkit-scrollbar {
+            width: 10px;
+        }
+
+        #savedSessionsList::-webkit-scrollbar-track {
+            background: #131a31;
+            border-radius: 999px;
+        }
+
+        #savedSessionsList::-webkit-scrollbar-thumb {
+            background: linear-gradient(180deg, #00b8ea, #5f4ad1);
+            border-radius: 999px;
+            border: 2px solid #131a31;
+        }
+
+        #savedSessionsList::-webkit-scrollbar-thumb:hover {
+            background: linear-gradient(180deg, #21d1ff, #735de4);
+        }
+
         .log-item {
             padding: 4px 0;
             border-bottom: 1px solid #1f1f35;
@@ -313,21 +350,6 @@
         .log-item .time { color: #555; margin-right: 6px; }
         .log-focused { color: #00e676; }
         .log-away { color: #ff5252; }
-
-        .sensitivity-control {
-            margin-top: 8px;
-        }
-
-        .sensitivity-control label {
-            font-size: 0.8rem;
-            color: #888;
-        }
-
-        .sensitivity-control input[type="range"] {
-            width: 100%;
-            margin-top: 4px;
-            accent-color: #7b2ff7;
-        }
 
         .todo-input-row {
             display: flex;
@@ -616,13 +638,6 @@
                 </div>
             </div>
 
-            <!-- Sensitivity -->
-            <div class="card">
-                <div class="sensitivity-control">
-                    <label>Sensitivity: <span id="sensLabel">Medium</span></label>
-                    <input type="range" id="sensitivity" min="1" max="5" value="3" step="1">
-                </div>
-            </div>
         </div>
     </div>
 
@@ -652,8 +667,6 @@
         const startBtn         = document.getElementById('startBtn');
         const historyBtn       = document.getElementById('historyBtn');
         const refreshSavedBtn  = document.getElementById('refreshSavedBtn');
-        const sensitivityInput = document.getElementById('sensitivity');
-        const sensLabel        = document.getElementById('sensLabel');
         const leftEyeCanvas    = document.getElementById('leftEyeCanvas');
         const rightEyeCanvas   = document.getElementById('rightEyeCanvas');
         const leftEyeCtx       = leftEyeCanvas.getContext('2d');
@@ -713,13 +726,9 @@
         const LEFT_FACE = 234;
         const RIGHT_FACE = 454;
 
-        const SENS_LABELS = ['Very High', 'High', 'Medium', 'Low', 'Very Low'];
         const SENS_THRESHOLDS = [0.15, 0.20, 0.28, 0.35, 0.42]; // iris ratio thresholds
         const HEAD_THRESHOLDS = [0.12, 0.16, 0.22, 0.28, 0.34]; // head turn thresholds
-
-        sensitivityInput.addEventListener('input', () => {
-            sensLabel.textContent = SENS_LABELS[sensitivityInput.value - 1];
-        });
+        const FIXED_SENSITIVITY_INDEX = 3; // Low sensitivity mode
 
         // ─── Helpers ───
         function fmtTime(ms) {
@@ -1201,7 +1210,7 @@
             }
 
             const landmarks = results.multiFaceLandmarks[0];
-            const sensIdx = parseInt(sensitivityInput.value) - 1;
+            const sensIdx = FIXED_SENSITIVITY_INDEX;
 
             // ─── Draw face mesh (subtle) ───
             ctx.strokeStyle = 'rgba(100, 200, 255, 0.15)';
