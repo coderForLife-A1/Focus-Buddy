@@ -29,11 +29,38 @@ def init_db():
             created_at TEXT NOT NULL
         )
     ''')
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS todos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            is_done INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+    ''')
 
     # Backward-compatible migration for existing databases.
     existing_columns = [row[1] for row in c.execute("PRAGMA table_info(focus_sessions)").fetchall()]
     if 'client_session_id' not in existing_columns:
         c.execute('ALTER TABLE focus_sessions ADD COLUMN client_session_id TEXT')
+
+    todo_columns = [row[1] for row in c.execute("PRAGMA table_info(todos)").fetchall()]
+    if todo_columns:
+        if 'is_done' not in todo_columns:
+            c.execute('ALTER TABLE todos ADD COLUMN is_done INTEGER NOT NULL DEFAULT 0')
+        if 'created_at' not in todo_columns:
+            c.execute('ALTER TABLE todos ADD COLUMN created_at TEXT')
+            c.execute(
+                'UPDATE todos SET created_at = ? WHERE created_at IS NULL OR created_at = ""',
+                (datetime.now(timezone.utc).isoformat(),),
+            )
+        if 'updated_at' not in todo_columns:
+            c.execute('ALTER TABLE todos ADD COLUMN updated_at TEXT')
+            c.execute(
+                'UPDATE todos SET updated_at = ? WHERE updated_at IS NULL OR updated_at = ""',
+                (datetime.now(timezone.utc).isoformat(),),
+            )
+
     conn.commit()
     conn.close()
 
@@ -226,6 +253,152 @@ def delete_all_focus_sessions():
         return jsonify({'ok': True, 'message': 'All history cleared successfully'}), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/todos', methods=['GET'])
+def list_todos():
+    conn = get_conn()
+    rows = conn.execute(
+        '''
+        SELECT
+            id,
+            title,
+            is_done,
+            created_at,
+            updated_at
+        FROM todos
+        ORDER BY is_done ASC, id DESC
+        '''
+    ).fetchall()
+    conn.close()
+
+    todos = [
+        {
+            'id': row['id'],
+            'title': row['title'],
+            'isDone': bool(row['is_done']),
+            'createdAt': row['created_at'],
+            'updatedAt': row['updated_at'],
+        }
+        for row in rows
+    ]
+    return jsonify({'todos': todos}), 200
+
+
+@app.route('/api/todos', methods=['POST'])
+def create_todo():
+    payload = request.get_json(silent=True) or {}
+    raw_title = payload.get('title', '')
+    title = str(raw_title).strip()
+
+    if not title:
+        return jsonify({'error': 'Title is required'}), 400
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    conn = get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        '''
+        INSERT INTO todos (title, is_done, created_at, updated_at)
+        VALUES (?, 0, ?, ?)
+        ''',
+        (title, now_iso, now_iso),
+    )
+    todo_id = cursor.lastrowid
+    conn.commit()
+    row = conn.execute(
+        '''
+        SELECT id, title, is_done, created_at, updated_at
+        FROM todos
+        WHERE id = ?
+        ''',
+        (todo_id,),
+    ).fetchone()
+    conn.close()
+
+    return jsonify(
+        {
+            'todo': {
+                'id': row['id'],
+                'title': row['title'],
+                'isDone': bool(row['is_done']),
+                'createdAt': row['created_at'],
+                'updatedAt': row['updated_at'],
+            }
+        }
+    ), 201
+
+
+@app.route('/api/todos/<int:todo_id>', methods=['PATCH'])
+def update_todo(todo_id):
+    payload = request.get_json(silent=True) or {}
+
+    if 'title' not in payload and 'isDone' not in payload:
+        return jsonify({'error': 'Nothing to update'}), 400
+
+    conn = get_conn()
+    existing = conn.execute(
+        'SELECT id, title, is_done, created_at, updated_at FROM todos WHERE id = ?',
+        (todo_id,),
+    ).fetchone()
+    if not existing:
+        conn.close()
+        return jsonify({'error': 'Todo not found'}), 404
+
+    new_title = existing['title']
+    new_is_done = existing['is_done']
+
+    if 'title' in payload:
+        candidate = str(payload.get('title', '')).strip()
+        if not candidate:
+            conn.close()
+            return jsonify({'error': 'Title cannot be empty'}), 400
+        new_title = candidate
+
+    if 'isDone' in payload:
+        new_is_done = 1 if bool(payload.get('isDone')) else 0
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        '''
+        UPDATE todos
+        SET title = ?, is_done = ?, updated_at = ?
+        WHERE id = ?
+        ''',
+        (new_title, new_is_done, now_iso, todo_id),
+    )
+    conn.commit()
+    row = conn.execute(
+        'SELECT id, title, is_done, created_at, updated_at FROM todos WHERE id = ?',
+        (todo_id,),
+    ).fetchone()
+    conn.close()
+
+    return jsonify(
+        {
+            'todo': {
+                'id': row['id'],
+                'title': row['title'],
+                'isDone': bool(row['is_done']),
+                'createdAt': row['created_at'],
+                'updatedAt': row['updated_at'],
+            }
+        }
+    ), 200
+
+
+@app.route('/api/todos/<int:todo_id>', methods=['DELETE'])
+def delete_todo(todo_id):
+    conn = get_conn()
+    existing = conn.execute('SELECT id FROM todos WHERE id = ?', (todo_id,)).fetchone()
+    if not existing:
+        conn.close()
+        return jsonify({'error': 'Todo not found'}), 404
+
+    conn.execute('DELETE FROM todos WHERE id = ?', (todo_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({'ok': True}), 200
 
 if __name__ == '__main__':
     app.run(debug=True)

@@ -329,6 +329,71 @@
             accent-color: #7b2ff7;
         }
 
+        .todo-input-row {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+
+        .todo-input-row input {
+            flex: 1;
+            border: 1px solid #2a2a3e;
+            background: #111126;
+            color: #e0e0e0;
+            border-radius: 8px;
+            padding: 8px;
+            font-size: 0.9rem;
+        }
+
+        .todo-list {
+            list-style: none;
+            max-height: 200px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .todo-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: #111126;
+            border: 1px solid #2a2a3e;
+            border-radius: 10px;
+            padding: 8px 10px;
+        }
+
+        .todo-title {
+            flex: 1;
+            font-size: 0.88rem;
+            word-break: break-word;
+        }
+
+        .todo-title.done {
+            color: #8a8aa3;
+            text-decoration: line-through;
+        }
+
+        .todo-delete {
+            border: none;
+            border-radius: 6px;
+            background: #ff5252;
+            color: #fff;
+            font-size: 0.75rem;
+            padding: 5px 8px;
+            cursor: pointer;
+        }
+
+        .todo-empty {
+            font-size: 0.82rem;
+            color: #8a8aa3;
+            border: 1px dashed #2a2a3e;
+            border-radius: 8px;
+            padding: 8px;
+            text-align: center;
+        }
+
         @media (max-width: 1000px) {
             .tracking-area {
                 width: 100%;
@@ -410,6 +475,17 @@
                         <span class="stat-value" id="savedTotalFocus">00:00</span>
                     </div>
                     <div class="log-list" id="savedSessionsList" style="margin-top:8px;"></div>
+                </div>
+
+                <!-- To-Do -->
+                <div class="card">
+                    <div style="font-size:0.85rem;color:#888;margin-bottom:8px;">To-Do List</div>
+                    <div class="todo-input-row">
+                        <input id="todoInput" type="text" maxlength="160" placeholder="Add a task for this session...">
+                        <button class="btn btn-primary" id="addTodoBtn" style="width:auto;padding:8px 12px;font-size:0.85rem;">Add</button>
+                    </div>
+                    <div id="todoEmpty" class="todo-empty">No tasks yet</div>
+                    <ul id="todoList" class="todo-list"></ul>
                 </div>
             </div>
 
@@ -523,6 +599,10 @@
         const timerConfigText      = document.getElementById('timerConfigText');
         const timerCountdown       = document.getElementById('timerCountdown');
         const sessionOverScreen    = document.getElementById('sessionOverScreen');
+        const todoInput            = document.getElementById('todoInput');
+        const addTodoBtn           = document.getElementById('addTodoBtn');
+        const todoListEl           = document.getElementById('todoList');
+        const todoEmptyEl          = document.getElementById('todoEmpty');
 
         // ─── State ───
         let tracking        = false;
@@ -540,6 +620,7 @@
         let sessionEndAt      = null;
         let sessionEndTimer   = null;
         let countdownTimer    = null;
+        let todos             = [];
 
         const AUTO_SAVE_MS = 15000;
 
@@ -719,6 +800,105 @@
             while (logList.children.length > 50) logList.removeChild(logList.lastChild);
         }
 
+        function escapeHtml(value) {
+            return String(value)
+                .replaceAll('&', '&amp;')
+                .replaceAll('<', '&lt;')
+                .replaceAll('>', '&gt;')
+                .replaceAll('"', '&quot;')
+                .replaceAll("'", '&#39;');
+        }
+
+        function renderTodos() {
+            todoListEl.innerHTML = '';
+
+            if (!todos.length) {
+                todoEmptyEl.style.display = 'block';
+                return;
+            }
+
+            todoEmptyEl.style.display = 'none';
+            for (const todo of todos) {
+                const li = document.createElement('li');
+                li.className = 'todo-item';
+                li.innerHTML = `
+                    <input type="checkbox" data-id="${todo.id}" ${todo.isDone ? 'checked' : ''}>
+                    <span class="todo-title ${todo.isDone ? 'done' : ''}">${escapeHtml(todo.title)}</span>
+                    <button class="todo-delete" data-id="${todo.id}">Delete</button>
+                `;
+                todoListEl.appendChild(li);
+            }
+        }
+
+        async function loadTodos() {
+            try {
+                const response = await fetch('/api/todos');
+                if (!response.ok) {
+                    throw new Error('Failed to load todos');
+                }
+                const data = await response.json();
+                todos = data.todos || [];
+                renderTodos();
+            } catch (error) {
+                console.error(error);
+                todoEmptyEl.textContent = 'Unable to load tasks right now';
+                todoEmptyEl.style.display = 'block';
+            }
+        }
+
+        async function addTodo() {
+            const title = todoInput.value.trim();
+            if (!title) return;
+
+            addTodoBtn.disabled = true;
+            try {
+                const response = await fetch('/api/todos', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title })
+                });
+                if (!response.ok) {
+                    throw new Error('Failed to add todo');
+                }
+                todoInput.value = '';
+                await loadTodos();
+            } catch (error) {
+                console.error(error);
+            } finally {
+                addTodoBtn.disabled = false;
+            }
+        }
+
+        async function setTodoDone(todoId, isDone) {
+            try {
+                const response = await fetch(`/api/todos/${todoId}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ isDone })
+                });
+                if (!response.ok) {
+                    throw new Error('Failed to update todo');
+                }
+                await loadTodos();
+            } catch (error) {
+                console.error(error);
+            }
+        }
+
+        async function removeTodo(todoId) {
+            try {
+                const response = await fetch(`/api/todos/${todoId}`, {
+                    method: 'DELETE'
+                });
+                if (!response.ok) {
+                    throw new Error('Failed to delete todo');
+                }
+                await loadTodos();
+            } catch (error) {
+                console.error(error);
+            }
+        }
+
         function currentFocusMs(nowTs) {
             if (lastFocused && lastFocusStamp) {
                 return totalFocusMs + (nowTs - lastFocusStamp);
@@ -818,6 +998,28 @@
         });
         setTimerBtn.addEventListener('click', applyConfiguredTimer);
         clearTimerBtn.addEventListener('click', clearConfiguredTimer);
+        addTodoBtn.addEventListener('click', addTodo);
+        todoInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                addTodo();
+            }
+        });
+        todoListEl.addEventListener('change', (event) => {
+            const target = event.target;
+            if (!(target instanceof HTMLInputElement)) return;
+            if (target.type !== 'checkbox') return;
+            const todoId = Number(target.dataset.id);
+            if (!Number.isFinite(todoId)) return;
+            setTodoDone(todoId, target.checked);
+        });
+        todoListEl.addEventListener('click', (event) => {
+            const target = event.target;
+            if (!(target instanceof HTMLButtonElement)) return;
+            if (!target.classList.contains('todo-delete')) return;
+            const todoId = Number(target.dataset.id);
+            if (!Number.isFinite(todoId)) return;
+            removeTodo(todoId);
+        });
 
         // Compute iris position ratio within eye (0 = left edge, 1 = right edge)
         function irisRatio(landmarks, eyeIndices, irisIndices) {
@@ -1182,6 +1384,7 @@
 
         timerConfigText.textContent = configuredTimerText();
         loadSavedStats();
+        loadTodos();
     </script>
 </body>
 </html>
