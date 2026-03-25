@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Task Calendar & Holidays</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --bg: #0f0f1a;
+            --panel: #1a1a2e;
+            --panel-2: #121226;
+            --border: #2a2a3e;
+            --text: #e0e0e0;
+            --muted: #8a8aa3;
+            --accent: #00d4ff;
+            --accent2: #7b2ff7;
+            --todo: #4aa3ff;
+            --done: #00e676;
+            --holiday: #ffc107;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: radial-gradient(circle at top right, #1d1d34, var(--bg) 42%);
+            color: var(--text);
+            min-height: 100vh;
+            padding: 24px;
+        }
+
+        .container {
+            max-width: 1150px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            font-size: 1.8rem;
+            background: linear-gradient(135deg, var(--accent), var(--accent2));
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 8px;
+        }
+
+        .subtitle {
+            color: var(--muted);
+            margin-bottom: 16px;
+            font-size: 0.92rem;
+        }
+
+        .card {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 16px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+            margin-bottom: 14px;
+        }
+
+        .toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .toolbar-left,
+        .toolbar-right {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            border: none;
+            border-radius: 10px;
+            padding: 9px 12px;
+            font-weight: 600;
+            cursor: pointer;
+            color: #fff;
+            background: linear-gradient(135deg, var(--accent), var(--accent2));
+            transition: opacity 0.18s ease, transform 0.18s ease;
+        }
+
+        .btn:hover { opacity: 0.92; transform: translateY(-1px); }
+
+        .btn-secondary {
+            background: #2f325a;
+        }
+
+        select {
+            background: #11162c;
+            color: var(--text);
+            border: 1px solid #334877;
+            border-radius: 10px;
+            padding: 8px 10px;
+            font-size: 0.9rem;
+        }
+
+        .month-label {
+            font-size: 1.05rem;
+            font-weight: 700;
+            letter-spacing: 0.2px;
+            min-width: 170px;
+            text-align: center;
+        }
+
+        .status {
+            color: var(--muted);
+            font-size: 0.86rem;
+            margin-top: 10px;
+            min-height: 20px;
+        }
+
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, minmax(0, 1fr));
+            gap: 8px;
+        }
+
+        .dow {
+            text-align: center;
+            color: #a4b0d4;
+            font-size: 0.8rem;
+            font-weight: 700;
+            padding: 6px 4px;
+            border-bottom: 1px solid #32416b;
+            margin-bottom: 2px;
+        }
+
+        .day-cell {
+            min-height: 112px;
+            background: rgba(10, 13, 28, 0.92);
+            border: 1px solid #2d3962;
+            border-radius: 10px;
+            padding: 7px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .day-cell.other-month {
+            opacity: 0.35;
+        }
+
+        .day-cell.today {
+            border-color: #66ddff;
+            box-shadow: 0 0 0 1px rgba(102, 221, 255, 0.4) inset;
+        }
+
+        .day-num {
+            font-size: 0.8rem;
+            color: #d8e6ff;
+            font-weight: 700;
+        }
+
+        .event-pill {
+            display: inline-block;
+            max-width: 100%;
+            font-size: 0.72rem;
+            line-height: 1.2;
+            border-radius: 999px;
+            padding: 3px 8px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .pill-todo { background: rgba(74, 163, 255, 0.2); border: 1px solid rgba(74, 163, 255, 0.55); color: #cde7ff; }
+        .pill-done { background: rgba(0, 230, 118, 0.16); border: 1px solid rgba(0, 230, 118, 0.5); color: #c5ffd9; }
+        .pill-holiday { background: rgba(255, 193, 7, 0.18); border: 1px solid rgba(255, 193, 7, 0.55); color: #ffeab0; }
+
+        .legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            color: var(--muted);
+            font-size: 0.82rem;
+            margin-top: 8px;
+        }
+
+        .legend span { display: inline-flex; align-items: center; gap: 6px; }
+
+        .dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 999px;
+            display: inline-block;
+        }
+
+        .dot.todo { background: var(--todo); }
+        .dot.done { background: var(--done); }
+        .dot.holiday { background: var(--holiday); }
+
+        .holiday-list {
+            list-style: none;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .holiday-item {
+            background: rgba(18, 23, 45, 0.92);
+            border: 1px solid #334877;
+            border-radius: 10px;
+            padding: 10px;
+        }
+
+        .holiday-date { color: #ffeab0; font-size: 0.78rem; }
+        .holiday-name { color: #e6efff; font-size: 0.9rem; margin-top: 4px; }
+
+        .menu-toggle {
+            position: fixed;
+            top: 14px;
+            left: 14px;
+            width: 46px;
+            height: 46px;
+            border: 1px solid #2f3f67;
+            border-radius: 12px;
+            background: linear-gradient(135deg, #11162c, #1b2440);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+            cursor: pointer;
+            z-index: 1200;
+            box-shadow: 0 10px 24px rgba(2, 7, 22, 0.55);
+            transition: transform 0.2s ease, filter 0.2s ease;
+        }
+
+        .menu-toggle:hover {
+            transform: translateY(-1px);
+            filter: brightness(1.08);
+        }
+
+        .menu-toggle span {
+            width: 22px;
+            height: 2px;
+            border-radius: 999px;
+            background: #d9e8ff;
+            transition: transform 0.2s ease, opacity 0.2s ease;
+        }
+
+        body.menu-open .menu-toggle span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+        body.menu-open .menu-toggle span:nth-child(2) { opacity: 0; }
+        body.menu-open .menu-toggle span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+
+        .menu-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(7, 10, 20, 0.58);
+            backdrop-filter: blur(2px);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.25s ease;
+            z-index: 1100;
+        }
+
+        .side-menu {
+            position: fixed;
+            top: 0;
+            left: 0;
+            height: 100vh;
+            width: min(340px, 88vw);
+            padding: 74px 18px 18px;
+            background: linear-gradient(180deg, #161e37, #0f1325 70%);
+            border-right: 1px solid #2f3c63;
+            box-shadow: 16px 0 36px rgba(0, 0, 0, 0.35);
+            transform: translateX(-100%);
+            transition: transform 0.25s ease;
+            z-index: 1150;
+            overflow-y: auto;
+        }
+
+        body.menu-open .side-menu { transform: translateX(0); }
+        body.menu-open .menu-backdrop { opacity: 1; pointer-events: auto; }
+
+        .side-menu-title {
+            font-size: 1rem;
+            letter-spacing: 0.35px;
+            color: #dfe8ff;
+            margin-bottom: 12px;
+            font-weight: 700;
+        }
+
+        .feature-btn {
+            width: 100%;
+            text-align: left;
+            border: 1px solid #334877;
+            background: #171f39;
+            color: #e4ecff;
+            border-radius: 10px;
+            padding: 12px 12px;
+            font-size: 0.92rem;
+            font-weight: 600;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+        }
+
+        .feature-btn:hover {
+            transform: translateX(2px);
+            border-color: #4f6bb0;
+            background: #1d2850;
+        }
+
+        @media (max-width: 820px) {
+            body { padding: 14px; }
+            .day-cell { min-height: 90px; }
+            .month-label { min-width: 140px; font-size: 0.96rem; }
+        }
+    </style>
+</head>
+<body>
+    <button id="menuToggle" class="menu-toggle" aria-label="Open features menu" aria-expanded="false">
+        <span></span>
+        <span></span>
+        <span></span>
+    </button>
+
+    <div id="menuBackdrop" class="menu-backdrop"></div>
+
+    <aside id="sideMenu" class="side-menu" aria-hidden="true">
+        <div class="side-menu-title">Features</div>
+        <button id="menuTrackerBtn" class="feature-btn">Eye Tracker</button>
+        <button id="menuHistoryBtn" class="feature-btn">Session History</button>
+        <button id="menuTodoBtn" class="feature-btn">To-Do Manager</button>
+        <button id="menuCalendarBtn" class="feature-btn">Calendar</button>
+        <button id="menuSummarizerBtn" class="feature-btn">AI Summarizer</button>
+    </aside>
+
+    <div class="container">
+        <h1>Task Calendar</h1>
+        <div class="subtitle">Calendar syncs with your saved to-do tasks and overlays official public holidays.</div>
+
+        <div class="card">
+            <div class="toolbar">
+                <div class="toolbar-left">
+                    <button id="prevMonthBtn" class="btn btn-secondary">Prev</button>
+                    <div id="monthLabel" class="month-label">Month Year</div>
+                    <button id="nextMonthBtn" class="btn btn-secondary">Next</button>
+                </div>
+                <div class="toolbar-right">
+                    <button id="todayBtn" class="btn">Today</button>
+                    <button id="refreshBtn" class="btn btn-secondary">Refresh</button>
+                </div>
+            </div>
+            <div id="status" class="status">Loading calendar data...</div>
+            <div class="legend">
+                <span><i class="dot todo"></i> Open To-Do</span>
+                <span><i class="dot done"></i> Completed To-Do</span>
+                <span><i class="dot holiday"></i> Holiday</span>
+            </div>
+        </div>
+
+        <div class="card">
+            <div id="calendarGrid" class="calendar-grid"></div>
+        </div>
+
+        <div class="card">
+            <h2 style="font-size:1.05rem; margin-bottom:8px;">Holidays In Selected Year</h2>
+            <ul id="holidayList" class="holiday-list"></ul>
+            <div id="holidayEmpty" class="status" style="margin-top:8px;">No holiday data loaded yet.</div>
+        </div>
+    </div>
+
+    <script>
+        const menuToggle = document.getElementById('menuToggle');
+        const sideMenu = document.getElementById('sideMenu');
+        const menuBackdrop = document.getElementById('menuBackdrop');
+        const menuTrackerBtn = document.getElementById('menuTrackerBtn');
+        const menuHistoryBtn = document.getElementById('menuHistoryBtn');
+        const menuTodoBtn = document.getElementById('menuTodoBtn');
+        const menuCalendarBtn = document.getElementById('menuCalendarBtn');
+        const menuSummarizerBtn = document.getElementById('menuSummarizerBtn');
+
+        const prevMonthBtn = document.getElementById('prevMonthBtn');
+        const nextMonthBtn = document.getElementById('nextMonthBtn');
+        const todayBtn = document.getElementById('todayBtn');
+        const refreshBtn = document.getElementById('refreshBtn');
+        const monthLabel = document.getElementById('monthLabel');
+        const statusEl = document.getElementById('status');
+        const calendarGrid = document.getElementById('calendarGrid');
+        const holidayListEl = document.getElementById('holidayList');
+        const holidayEmptyEl = document.getElementById('holidayEmpty');
+        const HOLIDAY_COUNTRY = 'IN';
+
+        const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        const monthFormatter = new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' });
+        const dateLabelFormatter = new Intl.DateTimeFormat(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
+
+        const state = {
+            monthDate: new Date(),
+            todos: [],
+            holidaysByYearCountry: new Map(),
+        };
+
+        state.monthDate.setDate(1);
+
+        function setMenuOpen(isOpen) {
+            document.body.classList.toggle('menu-open', isOpen);
+            menuToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+            sideMenu.setAttribute('aria-hidden', isOpen ? 'false' : 'true');
+        }
+
+        function toDateKey(date) {
+            const y = date.getFullYear();
+            const m = String(date.getMonth() + 1).padStart(2, '0');
+            const d = String(date.getDate()).padStart(2, '0');
+            return `${y}-${m}-${d}`;
+        }
+
+        function parseIsoToDateKey(value) {
+            if (!value) return '';
+            const dt = new Date(value);
+            if (Number.isNaN(dt.getTime())) return '';
+            return toDateKey(dt);
+        }
+
+        function escapeHtml(value) {
+            return String(value)
+                .replaceAll('&', '&amp;')
+                .replaceAll('<', '&lt;')
+                .replaceAll('>', '&gt;')
+                .replaceAll('"', '&quot;')
+                .replaceAll("'", '&#39;');
+        }
+
+        async function loadTodos() {
+            const response = await fetch('/api/todos');
+            if (!response.ok) {
+                throw new Error('Failed to load to-do tasks');
+            }
+            const data = await response.json();
+            state.todos = data.todos || [];
+        }
+
+        function getHolidayCacheKey(year, country) {
+            return `${year}:${country}`;
+        }
+
+        async function loadHolidays(year, country) {
+            const cacheKey = getHolidayCacheKey(year, country);
+            if (state.holidaysByYearCountry.has(cacheKey)) {
+                return state.holidaysByYearCountry.get(cacheKey);
+            }
+
+            const url = `https://date.nager.at/api/v3/PublicHolidays/${year}/${country}`;
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error('Failed to fetch holidays');
+            }
+
+            const holidays = await response.json();
+            state.holidaysByYearCountry.set(cacheKey, holidays);
+            return holidays;
+        }
+
+        function buildDayEventMap(year, month, holidays) {
+            const eventMap = new Map();
+
+            for (const todo of state.todos) {
+                const dateKey = parseIsoToDateKey(todo.createdAt || todo.updatedAt);
+                if (!dateKey) continue;
+
+                const eventList = eventMap.get(dateKey) || [];
+                eventList.push({
+                    type: todo.isDone ? 'done' : 'todo',
+                    text: todo.title,
+                });
+                eventMap.set(dateKey, eventList);
+            }
+
+            for (const holiday of holidays) {
+                const dateKey = String(holiday.date || '').trim();
+                if (!dateKey) continue;
+
+                const eventList = eventMap.get(dateKey) || [];
+                eventList.push({
+                    type: 'holiday',
+                    text: holiday.localName || holiday.name || 'Holiday',
+                });
+                eventMap.set(dateKey, eventList);
+            }
+
+            return eventMap;
+        }
+
+        function renderHolidayList(holidays) {
+            holidayListEl.innerHTML = '';
+
+            if (!holidays.length) {
+                holidayEmptyEl.textContent = 'No holidays returned for this year/country.';
+                holidayEmptyEl.style.display = 'block';
+                return;
+            }
+
+            holidayEmptyEl.style.display = 'none';
+            const sorted = [...holidays].sort((a, b) => String(a.date).localeCompare(String(b.date)));
+            for (const holiday of sorted) {
+                const item = document.createElement('li');
+                item.className = 'holiday-item';
+
+                const date = new Date(holiday.date + 'T00:00:00');
+                const dateText = Number.isNaN(date.getTime()) ? holiday.date : dateLabelFormatter.format(date);
+                const name = holiday.localName || holiday.name || 'Holiday';
+
+                item.innerHTML = `
+                    <div class="holiday-date">${escapeHtml(dateText)}</div>
+                    <div class="holiday-name">${escapeHtml(name)}</div>
+                `;
+                holidayListEl.appendChild(item);
+            }
+        }
+
+        function renderCalendarGrid(year, month, eventMap) {
+            calendarGrid.innerHTML = '';
+
+            for (const dayName of DOW) {
+                const header = document.createElement('div');
+                header.className = 'dow';
+                header.textContent = dayName;
+                calendarGrid.appendChild(header);
+            }
+
+            const firstDay = new Date(year, month, 1);
+            const startDayIdx = firstDay.getDay();
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            const prevMonthDays = new Date(year, month, 0).getDate();
+            const todayKey = toDateKey(new Date());
+
+            const totalCells = 42;
+            for (let cell = 0; cell < totalCells; cell++) {
+                const dayCell = document.createElement('div');
+                dayCell.className = 'day-cell';
+
+                let dateObj;
+                let dayNumber;
+                if (cell < startDayIdx) {
+                    dayNumber = prevMonthDays - startDayIdx + cell + 1;
+                    dateObj = new Date(year, month - 1, dayNumber);
+                    dayCell.classList.add('other-month');
+                } else if (cell >= startDayIdx + daysInMonth) {
+                    dayNumber = cell - (startDayIdx + daysInMonth) + 1;
+                    dateObj = new Date(year, month + 1, dayNumber);
+                    dayCell.classList.add('other-month');
+                } else {
+                    dayNumber = cell - startDayIdx + 1;
+                    dateObj = new Date(year, month, dayNumber);
+                }
+
+                const dateKey = toDateKey(dateObj);
+                if (dateKey === todayKey) {
+                    dayCell.classList.add('today');
+                }
+
+                const num = document.createElement('div');
+                num.className = 'day-num';
+                num.textContent = String(dayNumber);
+                dayCell.appendChild(num);
+
+                const events = eventMap.get(dateKey) || [];
+                for (const event of events.slice(0, 3)) {
+                    const pill = document.createElement('span');
+                    const pillType = event.type === 'holiday' ? 'pill-holiday' : (event.type === 'done' ? 'pill-done' : 'pill-todo');
+                    pill.className = `event-pill ${pillType}`;
+                    pill.title = event.text;
+                    pill.textContent = event.text;
+                    dayCell.appendChild(pill);
+                }
+
+                if (events.length > 3) {
+                    const extra = document.createElement('span');
+                    extra.className = 'event-pill';
+                    extra.style.background = 'rgba(138,138,163,0.2)';
+                    extra.style.border = '1px solid rgba(138,138,163,0.5)';
+                    extra.style.color = '#c6c6d8';
+                    extra.textContent = `+${events.length - 3} more`;
+                    dayCell.appendChild(extra);
+                }
+
+                calendarGrid.appendChild(dayCell);
+            }
+        }
+
+        async function refreshCalendar() {
+            const year = state.monthDate.getFullYear();
+            const month = state.monthDate.getMonth();
+
+            monthLabel.textContent = monthFormatter.format(state.monthDate);
+            statusEl.textContent = 'Loading tasks and holidays...';
+
+            try {
+                await loadTodos();
+                const holidays = await loadHolidays(year, HOLIDAY_COUNTRY);
+                const eventMap = buildDayEventMap(year, month, holidays);
+
+                renderCalendarGrid(year, month, eventMap);
+                renderHolidayList(holidays);
+                statusEl.textContent = `Loaded ${state.todos.length} task(s) and ${holidays.length} holiday(s) for India.`;
+            } catch (error) {
+                console.error(error);
+                renderCalendarGrid(year, month, new Map());
+                renderHolidayList([]);
+                statusEl.textContent = 'Could not load calendar data right now. Check network and try refresh.';
+            }
+        }
+
+        prevMonthBtn.addEventListener('click', () => {
+            state.monthDate = new Date(state.monthDate.getFullYear(), state.monthDate.getMonth() - 1, 1);
+            refreshCalendar();
+        });
+
+        nextMonthBtn.addEventListener('click', () => {
+            state.monthDate = new Date(state.monthDate.getFullYear(), state.monthDate.getMonth() + 1, 1);
+            refreshCalendar();
+        });
+
+        todayBtn.addEventListener('click', () => {
+            state.monthDate = new Date();
+            state.monthDate.setDate(1);
+            refreshCalendar();
+        });
+
+        refreshBtn.addEventListener('click', () => {
+            state.holidaysByYearCountry.clear();
+            refreshCalendar();
+        });
+
+        menuToggle.addEventListener('click', () => {
+            const isOpen = document.body.classList.contains('menu-open');
+            setMenuOpen(!isOpen);
+        });
+        menuBackdrop.addEventListener('click', () => setMenuOpen(false));
+        menuTrackerBtn.addEventListener('click', () => {
+            setMenuOpen(false);
+            window.location.href = 'index.html';
+        });
+        menuHistoryBtn.addEventListener('click', () => {
+            setMenuOpen(false);
+            window.location.href = 'history.html';
+        });
+        menuTodoBtn.addEventListener('click', () => {
+            setMenuOpen(false);
+            window.location.href = 'todo.html';
+        });
+        menuCalendarBtn.addEventListener('click', () => {
+            setMenuOpen(false);
+            window.location.href = 'calendar.html';
+        });
+        menuSummarizerBtn.addEventListener('click', () => {
+            setMenuOpen(false);
+            window.location.href = 'ai_summarizer.html';
+        });
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && document.body.classList.contains('menu-open')) {
+                setMenuOpen(false);
+            }
+        });
+
+        refreshCalendar();
+    </script>
+</body>
+</html>

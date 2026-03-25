@@ -372,6 +372,12 @@ def ai_summarizer_page():
     return send_from_directory('.', 'ai_summarizer.html')
 
 
+@app.route('/calendar', methods=['GET'])
+@app.route('/calendar.html', methods=['GET'])
+def calendar_page():
+    return send_from_directory('.', 'calendar.html')
+
+
 @app.route('/api/ai-config', methods=['GET'])
 def ai_config():
     api_key = get_ai_api_key()

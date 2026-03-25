@@ -316,6 +316,7 @@
         <button id="menuTrackerBtn" class="feature-btn">Eye Tracker</button>
         <button id="menuHistoryBtn" class="feature-btn">Session History</button>
         <button id="menuTodoBtn" class="feature-btn">To-Do Manager</button>
+        <button id="menuCalendarBtn" class="feature-btn">Calendar</button>
         <button id="menuSummarizerBtn" class="feature-btn">AI Summarizer</button>
     </aside>
 
@@ -357,6 +358,7 @@
         const menuTrackerBtn = document.getElementById('menuTrackerBtn');
         const menuHistoryBtn = document.getElementById('menuHistoryBtn');
         const menuTodoBtn = document.getElementById('menuTodoBtn');
+        const menuCalendarBtn = document.getElementById('menuCalendarBtn');
         const menuSummarizerBtn = document.getElementById('menuSummarizerBtn');
 
         let todos = [];
@@ -513,6 +515,10 @@
         menuTodoBtn.addEventListener('click', () => {
             setMenuOpen(false);
             window.location.href = 'todo.html';
+        });
+        menuCalendarBtn.addEventListener('click', () => {
+            setMenuOpen(false);
+            window.location.href = 'calendar.html';
         });
         menuSummarizerBtn.addEventListener('click', () => {
             setMenuOpen(false);
