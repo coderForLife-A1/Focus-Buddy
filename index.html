@@ -347,6 +347,19 @@
             border-bottom: 1px solid #1f1f35;
         }
 
+        #savedSessionsList .log-item {
+            padding: 8px 0;
+            line-height: 1.35;
+            word-break: break-word;
+            overflow-wrap: anywhere;
+        }
+
+        #savedSessionsList .log-item .time {
+            display: block;
+            margin-bottom: 2px;
+            white-space: normal;
+        }
+
         .log-item .time { color: #555; margin-right: 6px; }
         .log-focused { color: #00e676; }
         .log-away { color: #ff5252; }
@@ -640,9 +653,7 @@
         <div class="side-menu-title">Features</div>
         <button id="menuStartBtn" class="feature-btn accent">Start or Stop Tracking</button>
         <button id="menuHistoryBtn" class="feature-btn">Open Session History</button>
-        <button id="menuRefreshBtn" class="feature-btn">Refresh Saved Sessions</button>
         <button id="menuTodoBtn" class="feature-btn">Jump to To-Do Input</button>
-        <button id="menuCloseBtn" class="feature-btn close">Close Menu</button>
     </aside>
 
     <h1>Eye Focus Tracker</h1>
@@ -682,7 +693,6 @@
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
                         <div style="font-size:0.85rem;color:#888;">Saved Sessions</div>
                         <div style="display:flex;gap:8px;">
-                            <button class="btn btn-primary" id="historyBtn" style="width:auto;padding:6px 12px;font-size:0.8rem;">History</button>
                             <button class="btn btn-primary" id="refreshSavedBtn" style="width:auto;padding:6px 12px;font-size:0.8rem;">Refresh</button>
                         </div>
                     </div>
@@ -802,7 +812,6 @@
         const progressFill     = document.getElementById('progressFill');
         const logList          = document.getElementById('logList');
         const startBtn         = document.getElementById('startBtn');
-        const historyBtn       = document.getElementById('historyBtn');
         const refreshSavedBtn  = document.getElementById('refreshSavedBtn');
         const leftEyeCanvas    = document.getElementById('leftEyeCanvas');
         const rightEyeCanvas   = document.getElementById('rightEyeCanvas');
@@ -824,9 +833,7 @@
         const menuBackdrop         = document.getElementById('menuBackdrop');
         const menuStartBtn         = document.getElementById('menuStartBtn');
         const menuHistoryBtn       = document.getElementById('menuHistoryBtn');
-        const menuRefreshBtn       = document.getElementById('menuRefreshBtn');
         const menuTodoBtn          = document.getElementById('menuTodoBtn');
-        const menuCloseBtn         = document.getElementById('menuCloseBtn');
         const todoInput            = document.getElementById('todoInput');
         const addTodoBtn           = document.getElementById('addTodoBtn');
         const todoListEl           = document.getElementById('todoList');
@@ -1223,9 +1230,6 @@
         }
 
         refreshSavedBtn.addEventListener('click', loadSavedStats);
-        historyBtn.addEventListener('click', () => {
-            window.location.href = 'history.html';
-        });
         setTimerBtn.addEventListener('click', applyConfiguredTimer);
         clearTimerBtn.addEventListener('click', clearConfiguredTimer);
         menuToggle.addEventListener('click', () => {
@@ -1233,7 +1237,6 @@
             setMenuOpen(!open);
         });
         menuBackdrop.addEventListener('click', () => setMenuOpen(false));
-        menuCloseBtn.addEventListener('click', () => setMenuOpen(false));
         menuStartBtn.addEventListener('click', () => {
             setMenuOpen(false);
             startTracking();
@@ -1241,10 +1244,6 @@
         menuHistoryBtn.addEventListener('click', () => {
             setMenuOpen(false);
             window.location.href = 'history.html';
-        });
-        menuRefreshBtn.addEventListener('click', async () => {
-            setMenuOpen(false);
-            await loadSavedStats();
         });
         menuTodoBtn.addEventListener('click', () => {
             setMenuOpen(false);
