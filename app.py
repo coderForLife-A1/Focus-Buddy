@@ -40,6 +40,7 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             title TEXT NOT NULL,
             is_done INTEGER NOT NULL DEFAULT 0,
+            due_date TEXT,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         )
@@ -66,6 +67,8 @@ def init_db():
                 'UPDATE todos SET updated_at = ? WHERE updated_at IS NULL OR updated_at = ""',
                 (datetime.now(timezone.utc).isoformat(),),
             )
+        if 'due_date' not in todo_columns:
+            c.execute('ALTER TABLE todos ADD COLUMN due_date TEXT')
 
     conn.commit()
     conn.close()
@@ -653,6 +656,7 @@ def list_todos():
             id,
             title,
             is_done,
+            due_date,
             created_at,
             updated_at
         FROM todos
@@ -666,6 +670,7 @@ def list_todos():
             'id': row['id'],
             'title': row['title'],
             'isDone': bool(row['is_done']),
+            'dueDate': row['due_date'],
             'createdAt': row['created_at'],
             'updatedAt': row['updated_at'],
         }
@@ -678,26 +683,34 @@ def list_todos():
 def create_todo():
     payload = request.get_json(silent=True) or {}
     raw_title = payload.get('title', '')
+    raw_due_date = payload.get('dueDate')
     title = str(raw_title).strip()
+    due_date = str(raw_due_date).strip() if raw_due_date is not None else None
 
     if not title:
         return jsonify({'error': 'Title is required'}), 400
+
+    if due_date:
+        if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', due_date):
+            return jsonify({'error': 'dueDate must be in YYYY-MM-DD format'}), 400
+    else:
+        due_date = None
 
     now_iso = datetime.now(timezone.utc).isoformat()
     conn = get_conn()
     cursor = conn.cursor()
     cursor.execute(
         '''
-        INSERT INTO todos (title, is_done, created_at, updated_at)
-        VALUES (?, 0, ?, ?)
+        INSERT INTO todos (title, is_done, due_date, created_at, updated_at)
+        VALUES (?, 0, ?, ?, ?)
         ''',
-        (title, now_iso, now_iso),
+        (title, due_date, now_iso, now_iso),
     )
     todo_id = cursor.lastrowid
     conn.commit()
     row = conn.execute(
         '''
-        SELECT id, title, is_done, created_at, updated_at
+        SELECT id, title, is_done, due_date, created_at, updated_at
         FROM todos
         WHERE id = ?
         ''',
@@ -711,6 +724,7 @@ def create_todo():
                 'id': row['id'],
                 'title': row['title'],
                 'isDone': bool(row['is_done']),
+                'dueDate': row['due_date'],
                 'createdAt': row['created_at'],
                 'updatedAt': row['updated_at'],
             }
@@ -722,12 +736,12 @@ def create_todo():
 def update_todo(todo_id):
     payload = request.get_json(silent=True) or {}
 
-    if 'title' not in payload and 'isDone' not in payload:
+    if 'title' not in payload and 'isDone' not in payload and 'dueDate' not in payload:
         return jsonify({'error': 'Nothing to update'}), 400
 
     conn = get_conn()
     existing = conn.execute(
-        'SELECT id, title, is_done, created_at, updated_at FROM todos WHERE id = ?',
+        'SELECT id, title, is_done, due_date, created_at, updated_at FROM todos WHERE id = ?',
         (todo_id,),
     ).fetchone()
     if not existing:
@@ -736,6 +750,7 @@ def update_todo(todo_id):
 
     new_title = existing['title']
     new_is_done = existing['is_done']
+    new_due_date = existing['due_date']
 
     if 'title' in payload:
         candidate = str(payload.get('title', '')).strip()
@@ -747,18 +762,32 @@ def update_todo(todo_id):
     if 'isDone' in payload:
         new_is_done = 1 if bool(payload.get('isDone')) else 0
 
+    if 'dueDate' in payload:
+        candidate_due = payload.get('dueDate')
+        if candidate_due is None:
+            new_due_date = None
+        else:
+            candidate_due = str(candidate_due).strip()
+            if candidate_due:
+                if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', candidate_due):
+                    conn.close()
+                    return jsonify({'error': 'dueDate must be in YYYY-MM-DD format'}), 400
+                new_due_date = candidate_due
+            else:
+                new_due_date = None
+
     now_iso = datetime.now(timezone.utc).isoformat()
     conn.execute(
         '''
         UPDATE todos
-        SET title = ?, is_done = ?, updated_at = ?
+        SET title = ?, is_done = ?, due_date = ?, updated_at = ?
         WHERE id = ?
         ''',
-        (new_title, new_is_done, now_iso, todo_id),
+        (new_title, new_is_done, new_due_date, now_iso, todo_id),
     )
     conn.commit()
     row = conn.execute(
-        'SELECT id, title, is_done, created_at, updated_at FROM todos WHERE id = ?',
+        'SELECT id, title, is_done, due_date, created_at, updated_at FROM todos WHERE id = ?',
         (todo_id,),
     ).fetchone()
     conn.close()
@@ -769,6 +798,7 @@ def update_todo(todo_id):
                 'id': row['id'],
                 'title': row['title'],
                 'isDone': bool(row['is_done']),
+                'dueDate': row['due_date'],
                 'createdAt': row['created_at'],
                 'updatedAt': row['updated_at'],
             }

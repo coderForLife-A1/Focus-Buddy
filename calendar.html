@@ -140,15 +140,33 @@
             display: flex;
             flex-direction: column;
             gap: 4px;
+            cursor: pointer;
+            transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+        }
+
+        .day-cell:hover {
+            transform: translateY(-3px) scale(1.02);
+            border-color: #66ddff;
+            box-shadow: 0 10px 20px rgba(4, 18, 43, 0.45), 0 0 0 1px rgba(102, 221, 255, 0.35) inset;
         }
 
         .day-cell.other-month {
             opacity: 0.35;
         }
 
+        .day-cell.selected {
+            border-color: #66ddff;
+            box-shadow: 0 0 0 1px rgba(102, 221, 255, 0.55) inset;
+        }
+
         .day-cell.today {
             border-color: #66ddff;
             box-shadow: 0 0 0 1px rgba(102, 221, 255, 0.4) inset;
+        }
+
+        .day-cell.today-muted {
+            border-color: #6e748c;
+            box-shadow: 0 0 0 1px rgba(110, 116, 140, 0.35) inset;
         }
 
         .day-num {
@@ -398,6 +416,8 @@
             monthDate: new Date(),
             todos: [],
             holidaysByYearCountry: new Map(),
+            selectedDateKey: toDateKey(new Date()),
+            eventMap: new Map(),
         };
 
         state.monthDate.setDate(1);
@@ -555,8 +575,19 @@
                 }
 
                 const dateKey = toDateKey(dateObj);
-                if (dateKey === todayKey) {
-                    dayCell.classList.add('today');
+                const isToday = dateKey === todayKey;
+                const isSelected = dateKey === state.selectedDateKey;
+
+                if (isSelected) {
+                    dayCell.classList.add('selected');
+                }
+
+                if (isToday) {
+                    if (state.selectedDateKey && state.selectedDateKey !== todayKey) {
+                        dayCell.classList.add('today-muted');
+                    } else {
+                        dayCell.classList.add('today');
+                    }
                 }
 
                 const num = document.createElement('div');
@@ -584,6 +615,11 @@
                     dayCell.appendChild(extra);
                 }
 
+                dayCell.addEventListener('click', () => {
+                    state.selectedDateKey = dateKey;
+                    renderCalendarGrid(year, month, eventMap);
+                });
+
                 calendarGrid.appendChild(dayCell);
             }
         }
@@ -599,8 +635,9 @@
                 await loadTodos();
                 const holidays = await loadHolidays(year, HOLIDAY_COUNTRY);
                 const eventMap = buildDayEventMap(year, month, holidays);
+                state.eventMap = eventMap;
 
-                renderCalendarGrid(year, month, eventMap);
+                renderCalendarGrid(year, month, state.eventMap);
                 renderHolidayList(holidays);
                 statusEl.textContent = `Loaded ${state.todos.length} task(s) and ${holidays.length} holiday(s) for India.`;
             } catch (error) {
@@ -622,7 +659,9 @@
         });
 
         todayBtn.addEventListener('click', () => {
-            state.monthDate = new Date();
+            const now = new Date();
+            state.selectedDateKey = toDateKey(now);
+            state.monthDate = new Date(now);
             state.monthDate.setDate(1);
             refreshCalendar();
         });

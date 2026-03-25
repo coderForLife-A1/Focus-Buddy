@@ -91,6 +91,7 @@
         .todo-input-row {
             display: flex;
             gap: 8px;
+            align-items: center;
         }
 
         .todo-input-row input {
@@ -101,6 +102,11 @@
             border-radius: 10px;
             padding: 10px 12px;
             font-size: 0.95rem;
+        }
+
+        .todo-input-row input[type="date"] {
+            flex: 0 0 170px;
+            color-scheme: dark;
         }
 
         .todo-input-row input::placeholder {
@@ -137,6 +143,19 @@
             flex: 1;
             font-size: 0.92rem;
             word-break: break-word;
+        }
+
+        .todo-main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            min-width: 0;
+        }
+
+        .todo-meta {
+            font-size: 0.76rem;
+            color: #95a4c7;
         }
 
         .todo-title.done {
@@ -329,6 +348,7 @@
         <div class="card">
             <div class="todo-input-row">
                 <input id="todoInput" type="text" maxlength="160" placeholder="Add a task...">
+                <input id="dueDateInput" type="date" aria-label="Due date">
                 <button id="addTodoBtn" class="btn">Add Task</button>
             </div>
             <div class="stats">
@@ -346,6 +366,7 @@
 
     <script>
         const todoInput = document.getElementById('todoInput');
+        const dueDateInput = document.getElementById('dueDateInput');
         const addTodoBtn = document.getElementById('addTodoBtn');
         const todoListEl = document.getElementById('todoList');
         const todoEmptyEl = document.getElementById('todoEmpty');
@@ -400,9 +421,13 @@
             for (const todo of todos) {
                 const li = document.createElement('li');
                 li.className = 'todo-item';
+                const dueText = todo.dueDate ? `Due: ${escapeHtml(todo.dueDate)}` : 'No due date';
                 li.innerHTML = `
                     <input type="checkbox" data-id="${todo.id}" ${todo.isDone ? 'checked' : ''}>
-                    <span class="todo-title ${todo.isDone ? 'done' : ''}">${escapeHtml(todo.title)}</span>
+                    <div class="todo-main">
+                        <span class="todo-title ${todo.isDone ? 'done' : ''}">${escapeHtml(todo.title)}</span>
+                        <span class="todo-meta">${dueText}</span>
+                    </div>
                     <div class="todo-actions">
                         <button class="mini-btn edit" data-id="${todo.id}">Edit</button>
                         <button class="mini-btn delete" data-id="${todo.id}">Delete</button>
@@ -428,6 +453,7 @@
 
         async function addTodo() {
             const title = todoInput.value.trim();
+            const dueDate = dueDateInput.value;
             if (!title) return;
 
             addTodoBtn.disabled = true;
@@ -435,10 +461,11 @@
                 const response = await fetch('/api/todos', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ title })
+                    body: JSON.stringify({ title, dueDate: dueDate || null })
                 });
                 if (!response.ok) throw new Error('Failed to add todo');
                 todoInput.value = '';
+                dueDateInput.value = '';
                 await loadTodos();
             } catch (error) {
                 console.error(error);
