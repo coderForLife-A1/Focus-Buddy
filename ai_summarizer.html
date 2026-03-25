@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Summarizer</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --bg: #0f0f1a;
+            --panel: #1a1a2e;
+            --panel-2: #121226;
+            --border: #2a2a3e;
+            --text: #e0e0e0;
+            --muted: #8a8aa3;
+            --accent: #00d4ff;
+            --accent2: #7b2ff7;
+            --good: #00e676;
+            --warn: #ffc107;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: radial-gradient(circle at top right, #1d1d34, var(--bg) 42%);
+            color: var(--text);
+            min-height: 100vh;
+            padding: 24px;
+        }
+
+        .container {
+            max-width: 980px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            font-size: 1.8rem;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, var(--accent), var(--accent2));
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .subtitle {
+            color: var(--muted);
+            margin-bottom: 16px;
+            font-size: 0.92rem;
+        }
+
+        .card {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 16px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+            margin-bottom: 14px;
+        }
+
+        .field-label {
+            display: block;
+            font-size: 0.82rem;
+            color: var(--muted);
+            margin-bottom: 8px;
+        }
+
+        textarea {
+            width: 100%;
+            min-height: 180px;
+            border: 1px solid #34406a;
+            background: rgba(10, 13, 28, 0.95);
+            color: var(--text);
+            border-radius: 10px;
+            padding: 12px;
+            font-size: 0.94rem;
+            resize: vertical;
+            line-height: 1.45;
+        }
+
+        .input-row {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        input[type="file"] {
+            color: var(--text);
+            font-size: 0.9rem;
+        }
+
+        input[type="range"] {
+            width: 180px;
+        }
+
+        .btn {
+            border: none;
+            border-radius: 10px;
+            padding: 10px 14px;
+            font-weight: 600;
+            cursor: pointer;
+            color: #fff;
+            background: linear-gradient(135deg, var(--accent), var(--accent2));
+            transition: opacity 0.18s ease, transform 0.18s ease;
+        }
+
+        .btn:hover {
+            opacity: 0.92;
+            transform: translateY(-1px);
+        }
+
+        .btn-secondary {
+            background: #2f325a;
+        }
+
+        .status {
+            color: var(--muted);
+            font-size: 0.85rem;
+            margin-top: 8px;
+            min-height: 20px;
+        }
+
+        .stats {
+            display: flex;
+            gap: 14px;
+            flex-wrap: wrap;
+            color: var(--muted);
+            font-size: 0.83rem;
+            margin-top: 10px;
+        }
+
+        .summary-box {
+            background: var(--panel-2);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 12px;
+            line-height: 1.5;
+            white-space: pre-wrap;
+            min-height: 160px;
+        }
+
+        .menu-toggle {
+            position: fixed;
+            top: 14px;
+            left: 14px;
+            width: 46px;
+            height: 46px;
+            border: 1px solid #2f3f67;
+            border-radius: 12px;
+            background: linear-gradient(135deg, #11162c, #1b2440);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+            cursor: pointer;
+            z-index: 1200;
+            box-shadow: 0 10px 24px rgba(2, 7, 22, 0.55);
+            transition: transform 0.2s ease, filter 0.2s ease;
+        }
+
+        .menu-toggle:hover {
+            transform: translateY(-1px);
+            filter: brightness(1.08);
+        }
+
+        .menu-toggle span {
+            width: 22px;
+            height: 2px;
+            border-radius: 999px;
+            background: #d9e8ff;
+            transition: transform 0.2s ease, opacity 0.2s ease;
+        }
+
+        body.menu-open .menu-toggle span:nth-child(1) {
+            transform: translateY(7px) rotate(45deg);
+        }
+
+        body.menu-open .menu-toggle span:nth-child(2) {
+            opacity: 0;
+        }
+
+        body.menu-open .menu-toggle span:nth-child(3) {
+            transform: translateY(-7px) rotate(-45deg);
+        }
+
+        .menu-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(7, 10, 20, 0.58);
+            backdrop-filter: blur(2px);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.25s ease;
+            z-index: 1100;
+        }
+
+        .side-menu {
+            position: fixed;
+            top: 0;
+            left: 0;
+            height: 100vh;
+            width: min(340px, 88vw);
+            padding: 74px 18px 18px;
+            background: linear-gradient(180deg, #161e37, #0f1325 70%);
+            border-right: 1px solid #2f3c63;
+            box-shadow: 16px 0 36px rgba(0, 0, 0, 0.35);
+            transform: translateX(-100%);
+            transition: transform 0.25s ease;
+            z-index: 1150;
+            overflow-y: auto;
+        }
+
+        body.menu-open .side-menu {
+            transform: translateX(0);
+        }
+
+        body.menu-open .menu-backdrop {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .side-menu-title {
+            font-size: 1rem;
+            letter-spacing: 0.35px;
+            color: #dfe8ff;
+            margin-bottom: 12px;
+            font-weight: 700;
+        }
+
+        .feature-btn {
+            width: 100%;
+            text-align: left;
+            border: 1px solid #334877;
+            background: #171f39;
+            color: #e4ecff;
+            border-radius: 10px;
+            padding: 12px 12px;
+            font-size: 0.92rem;
+            font-weight: 600;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+        }
+
+        .feature-btn:hover {
+            transform: translateX(2px);
+            border-color: #4f6bb0;
+            background: #1d2850;
+        }
+
+        @media (max-width: 720px) {
+            body { padding: 14px; }
+            textarea { min-height: 150px; }
+        }
+    </style>
+</head>
+<body>
+    <button id="menuToggle" class="menu-toggle" aria-label="Open features menu" aria-expanded="false">
+        <span></span>
+        <span></span>
+        <span></span>
+    </button>
+
+    <div id="menuBackdrop" class="menu-backdrop"></div>
+
+    <aside id="sideMenu" class="side-menu" aria-hidden="true">
+        <div class="side-menu-title">Features</div>
+        <button id="menuTrackerBtn" class="feature-btn">Eye Tracker</button>
+        <button id="menuHistoryBtn" class="feature-btn">Session History</button>
+        <button id="menuTodoBtn" class="feature-btn">To-Do Manager</button>
+        <button id="menuSummarizerBtn" class="feature-btn">AI Summarizer</button>
+    </aside>
+
+    <div class="container">
+        <h1>AI Summarizer</h1>
+        <div class="subtitle">Upload a PDF or text file, or paste text directly, then generate a concise summary.</div>
+
+        <div class="card">
+            <div class="input-row">
+                <input id="fileInput" type="file" accept=".pdf,.txt,.md,.text,.log">
+                <label class="field-label" for="lengthRange" style="margin:0;">Summary Length</label>
+                <input id="lengthRange" type="range" min="10" max="50" value="25">
+                <span id="lengthLabel">25%</span>
+                <button id="summarizeBtn" class="btn">Summarize</button>
+                <button id="clearBtn" class="btn btn-secondary">Clear</button>
+            </div>
+            <label class="field-label" for="textInput">Or paste text</label>
+            <textarea id="textInput" placeholder="Paste any article, notes, meeting transcript, or report text here..."></textarea>
+            <div class="status" id="status">Waiting for input.</div>
+            <div class="stats">
+                <div>Source sentences: <strong id="sourceSentenceCount">0</strong></div>
+                <div>Summary sentences: <strong id="summarySentenceCount">0</strong></div>
+                <div>Source words: <strong id="sourceWordCount">0</strong></div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:8px;">
+                <div class="field-label" style="margin:0;">Summary</div>
+                <div style="display:flex;gap:8px;">
+                    <button id="copyBtn" class="btn btn-secondary" style="padding:8px 12px;font-size:0.82rem;">Copy Summary</button>
+                    <button id="downloadPdfBtn" class="btn btn-secondary" style="padding:8px 12px;font-size:0.82rem;">Download as PDF</button>
+                </div>
+            </div>
+            <div id="summaryOutput" class="summary-box">Your generated summary will appear here.</div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script type="module">
+        import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.6.82/pdf.min.mjs';
+
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.6.82/pdf.worker.min.mjs';
+
+        const fileInput = document.getElementById('fileInput');
+        const textInput = document.getElementById('textInput');
+        const summarizeBtn = document.getElementById('summarizeBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const copyBtn = document.getElementById('copyBtn');
+        const downloadPdfBtn = document.getElementById('downloadPdfBtn');
+        const statusEl = document.getElementById('status');
+        const summaryOutput = document.getElementById('summaryOutput');
+        const sourceSentenceCountEl = document.getElementById('sourceSentenceCount');
+        const summarySentenceCountEl = document.getElementById('summarySentenceCount');
+        const sourceWordCountEl = document.getElementById('sourceWordCount');
+        const lengthRange = document.getElementById('lengthRange');
+        const lengthLabel = document.getElementById('lengthLabel');
+
+        const menuToggle = document.getElementById('menuToggle');
+        const sideMenu = document.getElementById('sideMenu');
+        const menuBackdrop = document.getElementById('menuBackdrop');
+        const menuTrackerBtn = document.getElementById('menuTrackerBtn');
+        const menuHistoryBtn = document.getElementById('menuHistoryBtn');
+        const menuTodoBtn = document.getElementById('menuTodoBtn');
+        const menuSummarizerBtn = document.getElementById('menuSummarizerBtn');
+
+        const STOP_WORDS = new Set([
+            'a','an','and','are','as','at','be','been','by','for','from','has','have','he','in','is','it','its',
+            'of','on','or','that','the','to','was','were','will','with','this','these','those','you','your','we',
+            'our','they','their','not','but','if','then','than','also','can','could','would','should','may','might',
+            'about','into','over','under','after','before','between','within','without','up','down','out','very'
+        ]);
+
+        function setMenuOpen(isOpen) {
+            document.body.classList.toggle('menu-open', isOpen);
+            menuToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+            sideMenu.setAttribute('aria-hidden', isOpen ? 'false' : 'true');
+        }
+
+        function cleanText(text) {
+            return String(text || '')
+                .replace(/\s+/g, ' ')
+                .replace(/\u0000/g, '')
+                .trim();
+        }
+
+        function splitSentences(text) {
+            return cleanText(text)
+                .split(/(?<=[.!?])\s+(?=[A-Z0-9])/)
+                .map((sentence) => sentence.trim())
+                .filter((sentence) => sentence.length > 0);
+        }
+
+        function tokenize(text) {
+            const words = text.toLowerCase().match(/[a-z0-9']+/g) || [];
+            return words.filter((word) => word.length > 2 && !STOP_WORDS.has(word));
+        }
+
+        function summarizeText(sourceText, ratioPercent) {
+            const sentences = splitSentences(sourceText);
+            if (sentences.length === 0) {
+                return { summary: '', sentenceCount: 0, sourceSentences: 0, sourceWords: 0 };
+            }
+
+            const sourceWords = (cleanText(sourceText).match(/\b[\w']+\b/g) || []).length;
+            const freq = new Map();
+            for (const token of tokenize(sourceText)) {
+                freq.set(token, (freq.get(token) || 0) + 1);
+            }
+
+            const scored = sentences.map((sentence, idx) => {
+                const tokens = tokenize(sentence);
+                if (!tokens.length) {
+                    return { idx, score: 0, sentence };
+                }
+                const score = tokens.reduce((sum, token) => sum + (freq.get(token) || 0), 0) / tokens.length;
+                return { idx, score, sentence };
+            });
+
+            const targetCount = Math.max(1, Math.min(12, Math.round((ratioPercent / 100) * sentences.length)));
+            const picked = scored
+                .sort((a, b) => b.score - a.score)
+                .slice(0, targetCount)
+                .sort((a, b) => a.idx - b.idx)
+                .map((item) => item.sentence);
+
+            return {
+                summary: picked.join(' '),
+                sentenceCount: picked.length,
+                sourceSentences: sentences.length,
+                sourceWords,
+            };
+        }
+
+        async function extractTextFromPdf(file) {
+            const bytes = new Uint8Array(await file.arrayBuffer());
+            const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+            const chunks = [];
+
+            for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+                const page = await pdf.getPage(pageNum);
+                const textContent = await page.getTextContent();
+                const pageText = textContent.items.map((item) => item.str).join(' ');
+                chunks.push(pageText);
+            }
+
+            return chunks.join(' ');
+        }
+
+        async function getSourceText() {
+            const pasted = cleanText(textInput.value);
+            if (pasted) {
+                statusEl.textContent = 'Using pasted text input.';
+                return pasted;
+            }
+
+            const file = fileInput.files && fileInput.files[0];
+            if (!file) {
+                return '';
+            }
+
+            const fileName = file.name.toLowerCase();
+            if (fileName.endsWith('.pdf')) {
+                statusEl.textContent = 'Reading PDF content...';
+                return await extractTextFromPdf(file);
+            }
+
+            statusEl.textContent = 'Reading text file content...';
+            return cleanText(await file.text());
+        }
+
+        async function runSummarizer() {
+            summarizeBtn.disabled = true;
+            statusEl.textContent = 'Preparing summary...';
+
+            try {
+                const sourceText = await getSourceText();
+                if (!sourceText) {
+                    statusEl.textContent = 'Please upload a PDF/text file or paste text first.';
+                    return;
+                }
+
+                const ratio = Number(lengthRange.value);
+                const response = await fetch('/api/ai-summarize', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: sourceText, ratioPercent: ratio })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Backend summarization failed');
+                }
+
+                const result = await response.json();
+
+                if (!result.summary) {
+                    statusEl.textContent = 'Could not generate a summary from the provided content.';
+                    summaryOutput.textContent = 'No summary available.';
+                    sourceSentenceCountEl.textContent = '0';
+                    summarySentenceCountEl.textContent = '0';
+                    sourceWordCountEl.textContent = '0';
+                    return;
+                }
+
+                summaryOutput.textContent = result.summary;
+                sourceSentenceCountEl.textContent = String(result.sourceSentences || 0);
+                summarySentenceCountEl.textContent = String(result.summarySentences || splitSentences(result.summary).length);
+                sourceWordCountEl.textContent = String(result.sourceWords || 0);
+
+                if (result.usedFallback) {
+                    statusEl.textContent = 'Summary generated using local fallback.';
+                } else {
+                    statusEl.textContent = 'Summary generated by server AI.';
+                }
+            } catch (error) {
+                console.error(error);
+                statusEl.textContent = 'Unable to summarize this file. Try another file or paste plain text.';
+            } finally {
+                summarizeBtn.disabled = false;
+            }
+        }
+
+        function clearAll() {
+            fileInput.value = '';
+            textInput.value = '';
+            summaryOutput.textContent = 'Your generated summary will appear here.';
+            statusEl.textContent = 'Waiting for input.';
+            sourceSentenceCountEl.textContent = '0';
+            summarySentenceCountEl.textContent = '0';
+            sourceWordCountEl.textContent = '0';
+        }
+
+        async function copySummary() {
+            const text = summaryOutput.textContent.trim();
+            if (!text || text === 'Your generated summary will appear here.' || text === 'No summary available.') {
+                statusEl.textContent = 'Generate a summary before copying.';
+                return;
+            }
+            try {
+                await navigator.clipboard.writeText(text);
+                statusEl.textContent = 'Summary copied to clipboard.';
+            } catch (error) {
+                console.error(error);
+                statusEl.textContent = 'Could not copy summary. Please copy manually.';
+            }
+        }
+
+        function downloadSummaryAsPdf() {
+            const text = summaryOutput.textContent.trim();
+            if (!text || text === 'Your generated summary will appear here.' || text === 'No summary available.') {
+                statusEl.textContent = 'Generate a summary before downloading PDF.';
+                return;
+            }
+
+            const jspdfNs = window.jspdf;
+            if (!jspdfNs || !jspdfNs.jsPDF) {
+                statusEl.textContent = 'PDF library not loaded. Please refresh and try again.';
+                return;
+            }
+
+            const doc = new jspdfNs.jsPDF({ unit: 'pt', format: 'a4' });
+            const margin = 40;
+            const width = doc.internal.pageSize.getWidth() - margin * 2;
+            const now = new Date();
+
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(16);
+            doc.text('AI Summary', margin, 52);
+
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(10);
+            doc.text(`Generated: ${now.toLocaleString()}`, margin, 70);
+
+            doc.setFontSize(12);
+            const lines = doc.splitTextToSize(text, width);
+            let y = 95;
+            const pageHeight = doc.internal.pageSize.getHeight();
+
+            for (const line of lines) {
+                if (y > pageHeight - 45) {
+                    doc.addPage();
+                    y = 50;
+                }
+                doc.text(line, margin, y);
+                y += 17;
+            }
+
+            doc.save(`ai-summary-${Date.now()}.pdf`);
+            statusEl.textContent = 'Summary PDF downloaded.';
+        }
+
+        lengthRange.addEventListener('input', () => {
+            lengthLabel.textContent = `${lengthRange.value}%`;
+        });
+
+        summarizeBtn.addEventListener('click', runSummarizer);
+        clearBtn.addEventListener('click', clearAll);
+        copyBtn.addEventListener('click', copySummary);
+        downloadPdfBtn.addEventListener('click', downloadSummaryAsPdf);
+
+        menuToggle.addEventListener('click', () => {
+            const isOpen = document.body.classList.contains('menu-open');
+            setMenuOpen(!isOpen);
+        });
+        menuBackdrop.addEventListener('click', () => setMenuOpen(false));
+        menuTrackerBtn.addEventListener('click', () => {
+            setMenuOpen(false);
+            window.location.href = 'index.html';
+        });
+        menuHistoryBtn.addEventListener('click', () => {
+            setMenuOpen(false);
+            window.location.href = 'history.html';
+        });
+        menuTodoBtn.addEventListener('click', () => {
+            setMenuOpen(false);
+            window.location.href = 'todo.html';
+        });
+        menuSummarizerBtn.addEventListener('click', () => {
+            setMenuOpen(false);
+            window.location.href = 'ai_summarizer.html';
+        });
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && document.body.classList.contains('menu-open')) {
+                setMenuOpen(false);
+            }
+        });
+    </script>
+</body>
+</html>

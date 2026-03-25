@@ -1,6 +1,12 @@
 from flask import Flask, request, jsonify, send_from_directory
+import importlib.util
+import json
+import os
+import re
 import sqlite3
 from datetime import datetime, timezone
+from urllib import error as urlerror
+from urllib import request as urlrequest
 
 app = Flask(__name__)
 DB_PATH = 'database.db'
@@ -72,6 +78,109 @@ def get_conn():
     return conn
 
 
+def get_ai_api_key():
+    env_key = os.getenv('AI_API_KEY', '').strip()
+    if env_key:
+        return env_key
+
+    def load_key_from_module_file(file_name):
+        file_path = os.path.join(os.path.dirname(__file__), file_name)
+        if not os.path.exists(file_path):
+            return ''
+        try:
+            spec = importlib.util.spec_from_file_location(file_name.replace('.py', ''), file_path)
+            if spec is None or spec.loader is None:
+                return ''
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            key = str(getattr(module, 'AI_API_KEY', '')).strip()
+            return key
+        except Exception:
+            return ''
+
+    local_key = load_key_from_module_file('ai_config_local.py')
+    if local_key:
+        return local_key
+
+    fallback_key = load_key_from_module_file('ai_config.py')
+    if fallback_key:
+        return fallback_key
+
+    return ''
+
+
+def split_sentences(text):
+    if not text:
+        return []
+    normalized = re.sub(r'\s+', ' ', str(text)).strip()
+    if not normalized:
+        return []
+    return [s.strip() for s in re.split(r'(?<=[.!?])\s+', normalized) if s.strip()]
+
+
+def fallback_extract_summary(text, ratio_percent):
+    sentences = split_sentences(text)
+    if not sentences:
+        return {'summary': '', 'sourceSentences': 0, 'summarySentences': 0, 'sourceWords': 0}
+
+    source_words = len(re.findall(r"\b[\w']+\b", text))
+    target_count = max(1, min(12, round((ratio_percent / 100.0) * len(sentences))))
+    picked = sentences[:target_count]
+
+    return {
+        'summary': ' '.join(picked),
+        'sourceSentences': len(sentences),
+        'summarySentences': len(picked),
+        'sourceWords': source_words,
+    }
+
+
+def ai_summarize_with_openai(api_key, text, ratio_percent):
+    sentences = split_sentences(text)
+    sentence_goal = max(1, min(12, round((ratio_percent / 100.0) * max(1, len(sentences)))))
+
+    payload = {
+        'model': 'gpt-4o-mini',
+        'temperature': 0.2,
+        'messages': [
+            {
+                'role': 'system',
+                'content': 'You are a concise summarizer. Return only the final summary text without headings.'
+            },
+            {
+                'role': 'user',
+                'content': (
+                    f'Summarize the following content in about {sentence_goal} sentences. '
+                    f'Keep the most important points and keep it factual.\n\n{text}'
+                )
+            },
+        ],
+    }
+
+    request_data = json.dumps(payload).encode('utf-8')
+    req = urlrequest.Request(
+        'https://api.openai.com/v1/chat/completions',
+        data=request_data,
+        headers={
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {api_key}',
+        },
+        method='POST',
+    )
+
+    with urlrequest.urlopen(req, timeout=60) as response:
+        body = response.read().decode('utf-8')
+        parsed = json.loads(body)
+        choices = parsed.get('choices') or []
+        if not choices:
+            raise ValueError('No choices returned by AI provider')
+        message = choices[0].get('message') or {}
+        summary = str(message.get('content') or '').strip()
+        if not summary:
+            raise ValueError('Empty summary returned by AI provider')
+        return summary
+
+
 @app.route('/', methods=['GET'])
 @app.route('/index.html', methods=['GET'])
 def index():
@@ -88,6 +197,77 @@ def history_page():
 @app.route('/todo.html', methods=['GET'])
 def todo_page():
     return send_from_directory('.', 'todo.html')
+
+
+@app.route('/ai-summarizer', methods=['GET'])
+@app.route('/ai_summarizer.html', methods=['GET'])
+def ai_summarizer_page():
+    return send_from_directory('.', 'ai_summarizer.html')
+
+
+@app.route('/api/ai-config', methods=['GET'])
+def ai_config():
+    api_key = get_ai_api_key()
+    return jsonify({'hasApiKey': bool(api_key)}), 200
+
+
+@app.route('/api/ai-summarize', methods=['POST'])
+def ai_summarize():
+    payload = request.get_json(silent=True) or {}
+    source_text = str(payload.get('text') or '').strip()
+    ratio_percent = payload.get('ratioPercent', 25)
+
+    try:
+        ratio_percent = float(ratio_percent)
+    except (TypeError, ValueError):
+        ratio_percent = 25.0
+
+    ratio_percent = max(10.0, min(50.0, ratio_percent))
+
+    if not source_text:
+        return jsonify({'error': 'Text is required'}), 400
+
+    local_summary = fallback_extract_summary(source_text, ratio_percent)
+    api_key = get_ai_api_key()
+
+    if not api_key:
+        return jsonify(
+            {
+                'summary': local_summary['summary'],
+                'sourceSentences': local_summary['sourceSentences'],
+                'summarySentences': local_summary['summarySentences'],
+                'sourceWords': local_summary['sourceWords'],
+                'usedFallback': True,
+                'provider': 'local',
+            }
+        ), 200
+
+    try:
+        ai_summary = ai_summarize_with_openai(api_key, source_text, ratio_percent)
+        summary_sentences = len(split_sentences(ai_summary))
+
+        return jsonify(
+            {
+                'summary': ai_summary,
+                'sourceSentences': local_summary['sourceSentences'],
+                'summarySentences': summary_sentences,
+                'sourceWords': local_summary['sourceWords'],
+                'usedFallback': False,
+                'provider': 'openai',
+            }
+        ), 200
+    except (urlerror.URLError, ValueError, KeyError, json.JSONDecodeError):
+        return jsonify(
+            {
+                'summary': local_summary['summary'],
+                'sourceSentences': local_summary['sourceSentences'],
+                'summarySentences': local_summary['summarySentences'],
+                'sourceWords': local_summary['sourceWords'],
+                'usedFallback': True,
+                'provider': 'local',
+                'warning': 'AI provider unavailable. Returned local summary.',
+            }
+        ), 200
 
 
 @app.route('/api/focus-sessions', methods=['POST'])

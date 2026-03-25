@@ -654,6 +654,7 @@
         <button id="menuStartBtn" class="feature-btn accent">Start or Stop Tracking</button>
         <button id="menuHistoryBtn" class="feature-btn">Session History</button>
         <button id="menuTodoBtn" class="feature-btn">To-Do Manager</button>
+        <button id="menuSummarizerBtn" class="feature-btn">AI Summarizer</button>
     </aside>
 
     <h1>Eye Focus Tracker</h1>
@@ -833,6 +834,7 @@
         const menuStartBtn         = document.getElementById('menuStartBtn');
         const menuHistoryBtn       = document.getElementById('menuHistoryBtn');
         const menuTodoBtn          = document.getElementById('menuTodoBtn');
+        const menuSummarizerBtn    = document.getElementById('menuSummarizerBtn');
         const openTodoManagerBtn   = document.getElementById('openTodoManagerBtn');
         const todoListEl           = document.getElementById('todoList');
         const todoEmptyEl          = document.getElementById('todoEmpty');
@@ -1196,6 +1198,10 @@
         menuTodoBtn.addEventListener('click', () => {
             setMenuOpen(false);
             openTodoManager();
+        });
+        menuSummarizerBtn.addEventListener('click', () => {
+            setMenuOpen(false);
+            window.location.href = 'ai_summarizer.html';
         });
         openTodoManagerBtn.addEventListener('click', openTodoManager);
         document.addEventListener('keydown', (event) => {

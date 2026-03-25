@@ -362,6 +362,7 @@
         <button id="menuTrackerBtn" class="feature-btn">Eye Tracker</button>
         <button id="menuHistoryBtn" class="feature-btn">Session History</button>
         <button id="menuTodoBtn" class="feature-btn">To-Do Manager</button>
+        <button id="menuSummarizerBtn" class="feature-btn">AI Summarizer</button>
     </aside>
 
     <div class="container">
@@ -456,6 +457,7 @@
         const menuTrackerBtn = document.getElementById('menuTrackerBtn');
         const menuHistoryBtn = document.getElementById('menuHistoryBtn');
         const menuTodoBtn = document.getElementById('menuTodoBtn');
+        const menuSummarizerBtn = document.getElementById('menuSummarizerBtn');
 
         const sumSessionsEl = document.getElementById('sumSessions');
         const sumRateEl = document.getElementById('sumRate');
@@ -561,6 +563,10 @@
         menuTodoBtn.addEventListener('click', () => {
             setMenuOpen(false);
             window.location.href = 'todo.html';
+        });
+        menuSummarizerBtn.addEventListener('click', () => {
+            setMenuOpen(false);
+            window.location.href = 'ai_summarizer.html';
         });
         document.addEventListener('keydown', (event) => {
             if (event.key === 'Escape' && document.body.classList.contains('menu-open')) {

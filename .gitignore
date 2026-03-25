@@ -45,6 +45,16 @@ flask_session/
 .env
 .env.local
 .env.*.local
+ai_config_local.py
+.envrc
+.secrets
+secrets.*
+api_keys.*
+credentials.*
+*.pem
+*.key
+*.p12
+*.pfx
 
 # ========================
 # SQLite
