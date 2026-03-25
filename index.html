@@ -471,6 +471,126 @@
             color: #5c6380;
         }
 
+        .menu-toggle {
+            position: fixed;
+            top: 14px;
+            left: 14px;
+            width: 46px;
+            height: 46px;
+            border: 1px solid #2f3f67;
+            border-radius: 12px;
+            background: linear-gradient(135deg, #11162c, #1b2440);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+            cursor: pointer;
+            z-index: 1200;
+            box-shadow: 0 10px 24px rgba(2, 7, 22, 0.55);
+            transition: transform 0.2s ease, filter 0.2s ease;
+        }
+
+        .menu-toggle:hover {
+            transform: translateY(-1px);
+            filter: brightness(1.08);
+        }
+
+        .menu-toggle span {
+            width: 22px;
+            height: 2px;
+            border-radius: 999px;
+            background: #d9e8ff;
+            transition: transform 0.2s ease, opacity 0.2s ease;
+        }
+
+        body.menu-open .menu-toggle span:nth-child(1) {
+            transform: translateY(7px) rotate(45deg);
+        }
+
+        body.menu-open .menu-toggle span:nth-child(2) {
+            opacity: 0;
+        }
+
+        body.menu-open .menu-toggle span:nth-child(3) {
+            transform: translateY(-7px) rotate(-45deg);
+        }
+
+        .menu-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(7, 10, 20, 0.58);
+            backdrop-filter: blur(2px);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.25s ease;
+            z-index: 1100;
+        }
+
+        .side-menu {
+            position: fixed;
+            top: 0;
+            left: 0;
+            height: 100vh;
+            width: min(340px, 88vw);
+            padding: 74px 18px 18px;
+            background: linear-gradient(180deg, #161e37, #0f1325 70%);
+            border-right: 1px solid #2f3c63;
+            box-shadow: 16px 0 36px rgba(0, 0, 0, 0.35);
+            transform: translateX(-100%);
+            transition: transform 0.25s ease;
+            z-index: 1150;
+            overflow-y: auto;
+        }
+
+        body.menu-open .side-menu {
+            transform: translateX(0);
+        }
+
+        body.menu-open .menu-backdrop {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .side-menu-title {
+            font-size: 1rem;
+            letter-spacing: 0.35px;
+            color: #dfe8ff;
+            margin-bottom: 12px;
+            font-weight: 700;
+        }
+
+        .feature-btn {
+            width: 100%;
+            text-align: left;
+            border: 1px solid #334877;
+            background: #171f39;
+            color: #e4ecff;
+            border-radius: 10px;
+            padding: 12px 12px;
+            font-size: 0.92rem;
+            font-weight: 600;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+        }
+
+        .feature-btn:hover {
+            transform: translateX(2px);
+            border-color: #4f6bb0;
+            background: #1d2850;
+        }
+
+        .feature-btn.accent {
+            background: linear-gradient(135deg, #00d4ff, #7b2ff7);
+            border-color: transparent;
+            color: #fff;
+        }
+
+        .feature-btn.close {
+            background: #2b355d;
+        }
+
         @media (max-width: 1000px) {
             .tracking-area {
                 width: 100%;
@@ -508,6 +628,23 @@
     </style>
 </head>
 <body>
+    <button id="menuToggle" class="menu-toggle" aria-label="Open features menu" aria-expanded="false">
+        <span></span>
+        <span></span>
+        <span></span>
+    </button>
+
+    <div id="menuBackdrop" class="menu-backdrop"></div>
+
+    <aside id="sideMenu" class="side-menu" aria-hidden="true">
+        <div class="side-menu-title">Features</div>
+        <button id="menuStartBtn" class="feature-btn accent">Start or Stop Tracking</button>
+        <button id="menuHistoryBtn" class="feature-btn">Open Session History</button>
+        <button id="menuRefreshBtn" class="feature-btn">Refresh Saved Sessions</button>
+        <button id="menuTodoBtn" class="feature-btn">Jump to To-Do Input</button>
+        <button id="menuCloseBtn" class="feature-btn close">Close Menu</button>
+    </aside>
+
     <h1>Eye Focus Tracker</h1>
     <p class="subtitle">Real-time gaze detection &mdash; are you looking at the screen?</p>
 
@@ -682,6 +819,14 @@
         const timerConfigText      = document.getElementById('timerConfigText');
         const timerCountdown       = document.getElementById('timerCountdown');
         const sessionOverScreen    = document.getElementById('sessionOverScreen');
+        const menuToggle           = document.getElementById('menuToggle');
+        const sideMenu             = document.getElementById('sideMenu');
+        const menuBackdrop         = document.getElementById('menuBackdrop');
+        const menuStartBtn         = document.getElementById('menuStartBtn');
+        const menuHistoryBtn       = document.getElementById('menuHistoryBtn');
+        const menuRefreshBtn       = document.getElementById('menuRefreshBtn');
+        const menuTodoBtn          = document.getElementById('menuTodoBtn');
+        const menuCloseBtn         = document.getElementById('menuCloseBtn');
         const todoInput            = document.getElementById('todoInput');
         const addTodoBtn           = document.getElementById('addTodoBtn');
         const todoListEl           = document.getElementById('todoList');
@@ -859,6 +1004,12 @@
                 countdownTimer = null;
             }
             sessionEndAt = null;
+        }
+
+        function setMenuOpen(isOpen) {
+            document.body.classList.toggle('menu-open', isOpen);
+            menuToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+            sideMenu.setAttribute('aria-hidden', isOpen ? 'false' : 'true');
         }
 
         async function endSessionByTimer() {
@@ -1077,6 +1228,34 @@
         });
         setTimerBtn.addEventListener('click', applyConfiguredTimer);
         clearTimerBtn.addEventListener('click', clearConfiguredTimer);
+        menuToggle.addEventListener('click', () => {
+            const open = document.body.classList.contains('menu-open');
+            setMenuOpen(!open);
+        });
+        menuBackdrop.addEventListener('click', () => setMenuOpen(false));
+        menuCloseBtn.addEventListener('click', () => setMenuOpen(false));
+        menuStartBtn.addEventListener('click', () => {
+            setMenuOpen(false);
+            startTracking();
+        });
+        menuHistoryBtn.addEventListener('click', () => {
+            setMenuOpen(false);
+            window.location.href = 'history.html';
+        });
+        menuRefreshBtn.addEventListener('click', async () => {
+            setMenuOpen(false);
+            await loadSavedStats();
+        });
+        menuTodoBtn.addEventListener('click', () => {
+            setMenuOpen(false);
+            todoInput.focus();
+            todoInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        });
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && document.body.classList.contains('menu-open')) {
+                setMenuOpen(false);
+            }
+        });
         addTodoBtn.addEventListener('click', addTodo);
         todoInput.addEventListener('keydown', (event) => {
             if (event.key === 'Enter') {
