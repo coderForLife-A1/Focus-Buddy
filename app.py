@@ -135,6 +135,36 @@ def fallback_extract_summary(text, ratio_percent):
     }
 
 
+def build_local_summary_response(local_summary, warning, ai_error=None):
+    response = {
+        'summary': local_summary['summary'],
+        'sourceSentences': local_summary['sourceSentences'],
+        'summarySentences': local_summary['summarySentences'],
+        'sourceWords': local_summary['sourceWords'],
+        'usedFallback': True,
+        'provider': 'local',
+        'warning': warning,
+    }
+    if ai_error:
+        response['aiError'] = ai_error
+    return response
+
+
+def infer_ai_provider(api_key):
+    configured_provider = os.getenv('AI_PROVIDER', '').strip().lower()
+    if configured_provider in ('openai', 'gemini', 'claude'):
+        return configured_provider
+
+    if str(api_key).startswith('AIza'):
+        return 'gemini'
+    if str(api_key).startswith('sk-ant-'):
+        return 'claude'
+    if str(api_key).startswith('sk-'):
+        return 'openai'
+
+    return 'openai'
+
+
 def ai_summarize_with_openai(api_key, text, ratio_percent):
     sentences = split_sentences(text)
     sentence_goal = max(1, min(12, round((ratio_percent / 100.0) * max(1, len(sentences)))))
@@ -181,6 +211,143 @@ def ai_summarize_with_openai(api_key, text, ratio_percent):
         return summary
 
 
+def ai_summarize_with_gemini(api_key, text, ratio_percent):
+    sentences = split_sentences(text)
+    sentence_goal = max(1, min(12, round((ratio_percent / 100.0) * max(1, len(sentences)))))
+
+    prompt_text = (
+        f'Summarize the following content in about {sentence_goal} sentences. '
+        f'Keep the most important points and keep it factual. '
+        'Return only the final summary text without headings.\n\n'
+        f'{text}'
+    )
+
+    payload = {
+        'contents': [
+            {
+                'parts': [
+                    {
+                        'text': prompt_text,
+                    }
+                ]
+            }
+        ],
+        'generationConfig': {
+            'temperature': 0.2,
+        },
+    }
+
+    request_data = json.dumps(payload).encode('utf-8')
+    model_candidates = ['gemini-1.5-flash-latest', 'gemini-1.5-flash', 'gemini-2.0-flash']
+    last_http_error = None
+
+    for model_name in model_candidates:
+        req = urlrequest.Request(
+            f'https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}',
+            data=request_data,
+            headers={
+                'Content-Type': 'application/json',
+            },
+            method='POST',
+        )
+
+        try:
+            with urlrequest.urlopen(req, timeout=60) as response:
+                body = response.read().decode('utf-8')
+                parsed = json.loads(body)
+
+                candidates = parsed.get('candidates') or []
+                if not candidates:
+                    feedback = parsed.get('promptFeedback') or {}
+                    block_reason = feedback.get('blockReason')
+                    if block_reason:
+                        raise ValueError(f'Gemini blocked prompt: {block_reason}')
+                    raise ValueError('No candidates returned by AI provider')
+
+                content = candidates[0].get('content') or {}
+                parts = content.get('parts') or []
+                summary_parts = [str(part.get('text') or '').strip() for part in parts if part.get('text')]
+                summary = ' '.join(summary_parts).strip()
+                if not summary:
+                    raise ValueError('Empty summary returned by AI provider')
+                return summary
+        except urlerror.HTTPError as exc:
+            if int(getattr(exc, 'code', 0) or 0) == 404:
+                last_http_error = exc
+                continue
+            raise
+
+    if last_http_error is not None:
+        raise last_http_error
+
+    raise ValueError('Gemini model resolution failed')
+
+
+def ai_summarize_with_claude(api_key, text, ratio_percent):
+    sentences = split_sentences(text)
+    sentence_goal = max(1, min(12, round((ratio_percent / 100.0) * max(1, len(sentences)))))
+
+    model_candidates = ['claude-3-5-haiku-latest', 'claude-3-5-sonnet-latest']
+    system_prompt = 'You are a concise summarizer. Return only the final summary text without headings.'
+    user_prompt = (
+        f'Summarize the following content in about {sentence_goal} sentences. '
+        f'Keep the most important points and keep it factual.\n\n{text}'
+    )
+
+    last_http_error = None
+    for model_name in model_candidates:
+        payload = {
+            'model': model_name,
+            'max_tokens': 600,
+            'temperature': 0.2,
+            'system': system_prompt,
+            'messages': [
+                {
+                    'role': 'user',
+                    'content': user_prompt,
+                }
+            ],
+        }
+
+        req = urlrequest.Request(
+            'https://api.anthropic.com/v1/messages',
+            data=json.dumps(payload).encode('utf-8'),
+            headers={
+                'Content-Type': 'application/json',
+                'x-api-key': api_key,
+                'anthropic-version': '2023-06-01',
+            },
+            method='POST',
+        )
+
+        try:
+            with urlrequest.urlopen(req, timeout=60) as response:
+                body = response.read().decode('utf-8')
+                parsed = json.loads(body)
+
+                content = parsed.get('content') or []
+                summary_parts = [
+                    str(item.get('text') or '').strip()
+                    for item in content
+                    if str(item.get('type') or '') == 'text' and item.get('text')
+                ]
+                summary = ' '.join(summary_parts).strip()
+                if not summary:
+                    raise ValueError('Empty summary returned by AI provider')
+                return summary
+        except urlerror.HTTPError as exc:
+            status_code = int(getattr(exc, 'code', 0) or 0)
+            if status_code in (400, 404):
+                last_http_error = exc
+                continue
+            raise
+
+    if last_http_error is not None:
+        raise last_http_error
+
+    raise ValueError('Claude model resolution failed')
+
+
 @app.route('/', methods=['GET'])
 @app.route('/index.html', methods=['GET'])
 def index():
@@ -208,7 +375,8 @@ def ai_summarizer_page():
 @app.route('/api/ai-config', methods=['GET'])
 def ai_config():
     api_key = get_ai_api_key()
-    return jsonify({'hasApiKey': bool(api_key)}), 200
+    provider = infer_ai_provider(api_key) if api_key else None
+    return jsonify({'hasApiKey': bool(api_key), 'provider': provider}), 200
 
 
 @app.route('/api/ai-summarize', methods=['POST'])
@@ -232,18 +400,22 @@ def ai_summarize():
 
     if not api_key:
         return jsonify(
-            {
-                'summary': local_summary['summary'],
-                'sourceSentences': local_summary['sourceSentences'],
-                'summarySentences': local_summary['summarySentences'],
-                'sourceWords': local_summary['sourceWords'],
-                'usedFallback': True,
-                'provider': 'local',
-            }
+            build_local_summary_response(
+                local_summary,
+                'No AI API key configured. Returned local summary.',
+                {'type': 'missing_api_key'},
+            )
         ), 200
 
     try:
-        ai_summary = ai_summarize_with_openai(api_key, source_text, ratio_percent)
+        provider = infer_ai_provider(api_key)
+        if provider == 'gemini':
+            ai_summary = ai_summarize_with_gemini(api_key, source_text, ratio_percent)
+        elif provider == 'claude':
+            ai_summary = ai_summarize_with_claude(api_key, source_text, ratio_percent)
+        else:
+            ai_summary = ai_summarize_with_openai(api_key, source_text, ratio_percent)
+
         summary_sentences = len(split_sentences(ai_summary))
 
         return jsonify(
@@ -253,20 +425,45 @@ def ai_summarize():
                 'summarySentences': summary_sentences,
                 'sourceWords': local_summary['sourceWords'],
                 'usedFallback': False,
-                'provider': 'openai',
+                'provider': provider,
             }
         ), 200
-    except (urlerror.URLError, ValueError, KeyError, json.JSONDecodeError):
+    except urlerror.HTTPError as exc:
         return jsonify(
-            {
-                'summary': local_summary['summary'],
-                'sourceSentences': local_summary['sourceSentences'],
-                'summarySentences': local_summary['summarySentences'],
-                'sourceWords': local_summary['sourceWords'],
-                'usedFallback': True,
-                'provider': 'local',
-                'warning': 'AI provider unavailable. Returned local summary.',
-            }
+            build_local_summary_response(
+                local_summary,
+                'AI provider rejected the request. Returned local summary.',
+                {
+                    'type': 'http_error',
+                    'status': int(getattr(exc, 'code', 0) or 0),
+                    'reason': str(getattr(exc, 'reason', '') or ''),
+                    'provider': infer_ai_provider(api_key),
+                },
+            )
+        ), 200
+    except urlerror.URLError as exc:
+        return jsonify(
+            build_local_summary_response(
+                local_summary,
+                'AI provider unavailable. Returned local summary.',
+                {
+                    'type': 'network_error',
+                    'reason': str(getattr(exc, 'reason', '') or str(exc)),
+                    'provider': infer_ai_provider(api_key),
+                },
+            )
+        ), 200
+    except (ValueError, KeyError, json.JSONDecodeError) as exc:
+        return jsonify(
+            build_local_summary_response(
+                local_summary,
+                'AI provider response was invalid. Returned local summary.',
+                {
+                    'type': 'parse_error',
+                    'reason': str(exc),
+                    'provider': infer_ai_provider(api_key),
+                },
+            )
         ), 200
 
 
