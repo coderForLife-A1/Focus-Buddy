@@ -652,8 +652,8 @@
     <aside id="sideMenu" class="side-menu" aria-hidden="true">
         <div class="side-menu-title">Features</div>
         <button id="menuStartBtn" class="feature-btn accent">Start or Stop Tracking</button>
-        <button id="menuHistoryBtn" class="feature-btn">Open Session History</button>
-        <button id="menuTodoBtn" class="feature-btn">Jump to To-Do Input</button>
+        <button id="menuHistoryBtn" class="feature-btn">Session History</button>
+        <button id="menuTodoBtn" class="feature-btn">To-Do Manager</button>
     </aside>
 
     <h1>Eye Focus Tracker</h1>
@@ -728,12 +728,11 @@
 
                 <!-- To-Do -->
                 <div class="card todo-card">
-                    <div class="todo-card-title">Session To-Do List</div>
-                    <div class="todo-input-row">
-                        <input id="todoInput" type="text" maxlength="160" placeholder="Add a task for this session...">
-                        <button class="btn btn-primary" id="addTodoBtn" style="width:auto;padding:10px 14px;font-size:0.9rem;">Add</button>
+                    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px;">
+                        <div class="todo-card-title" style="margin-bottom:0;">Session To-Do List</div>
+                        <button class="btn btn-primary" id="openTodoManagerBtn" style="width:auto;padding:8px 12px;font-size:0.82rem;">Manage Tasks</button>
                     </div>
-                    <div id="todoEmpty" class="todo-empty">No tasks yet</div>
+                    <div id="todoEmpty" class="todo-empty">No tasks yet. Use Manage Tasks to add one.</div>
                     <ul id="todoList" class="todo-list"></ul>
                 </div>
             </div>
@@ -834,8 +833,7 @@
         const menuStartBtn         = document.getElementById('menuStartBtn');
         const menuHistoryBtn       = document.getElementById('menuHistoryBtn');
         const menuTodoBtn          = document.getElementById('menuTodoBtn');
-        const todoInput            = document.getElementById('todoInput');
-        const addTodoBtn           = document.getElementById('addTodoBtn');
+        const openTodoManagerBtn   = document.getElementById('openTodoManagerBtn');
         const todoListEl           = document.getElementById('todoList');
         const todoEmptyEl          = document.getElementById('todoEmpty');
 
@@ -1059,9 +1057,8 @@
                 const li = document.createElement('li');
                 li.className = 'todo-item';
                 li.innerHTML = `
-                    <input type="checkbox" data-id="${todo.id}" ${todo.isDone ? 'checked' : ''}>
+                    <span style="font-size:0.9rem;color:${todo.isDone ? '#00e676' : '#8aa0d0'};">${todo.isDone ? 'DONE' : 'TODO'}</span>
                     <span class="todo-title ${todo.isDone ? 'done' : ''}">${escapeHtml(todo.title)}</span>
-                    <button class="todo-delete" data-id="${todo.id}">Delete</button>
                 `;
                 todoListEl.appendChild(li);
             }
@@ -1083,57 +1080,8 @@
             }
         }
 
-        async function addTodo() {
-            const title = todoInput.value.trim();
-            if (!title) return;
-
-            addTodoBtn.disabled = true;
-            try {
-                const response = await fetch('/api/todos', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ title })
-                });
-                if (!response.ok) {
-                    throw new Error('Failed to add todo');
-                }
-                todoInput.value = '';
-                await loadTodos();
-            } catch (error) {
-                console.error(error);
-            } finally {
-                addTodoBtn.disabled = false;
-            }
-        }
-
-        async function setTodoDone(todoId, isDone) {
-            try {
-                const response = await fetch(`/api/todos/${todoId}`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ isDone })
-                });
-                if (!response.ok) {
-                    throw new Error('Failed to update todo');
-                }
-                await loadTodos();
-            } catch (error) {
-                console.error(error);
-            }
-        }
-
-        async function removeTodo(todoId) {
-            try {
-                const response = await fetch(`/api/todos/${todoId}`, {
-                    method: 'DELETE'
-                });
-                if (!response.ok) {
-                    throw new Error('Failed to delete todo');
-                }
-                await loadTodos();
-            } catch (error) {
-                console.error(error);
-            }
+        function openTodoManager() {
+            window.location.href = 'todo.html';
         }
 
         function currentFocusMs(nowTs) {
@@ -1247,35 +1195,13 @@
         });
         menuTodoBtn.addEventListener('click', () => {
             setMenuOpen(false);
-            todoInput.focus();
-            todoInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            openTodoManager();
         });
+        openTodoManagerBtn.addEventListener('click', openTodoManager);
         document.addEventListener('keydown', (event) => {
             if (event.key === 'Escape' && document.body.classList.contains('menu-open')) {
                 setMenuOpen(false);
             }
-        });
-        addTodoBtn.addEventListener('click', addTodo);
-        todoInput.addEventListener('keydown', (event) => {
-            if (event.key === 'Enter') {
-                addTodo();
-            }
-        });
-        todoListEl.addEventListener('change', (event) => {
-            const target = event.target;
-            if (!(target instanceof HTMLInputElement)) return;
-            if (target.type !== 'checkbox') return;
-            const todoId = Number(target.dataset.id);
-            if (!Number.isFinite(todoId)) return;
-            setTodoDone(todoId, target.checked);
-        });
-        todoListEl.addEventListener('click', (event) => {
-            const target = event.target;
-            if (!(target instanceof HTMLButtonElement)) return;
-            if (!target.classList.contains('todo-delete')) return;
-            const todoId = Number(target.dataset.id);
-            if (!Number.isFinite(todoId)) return;
-            removeTodo(todoId);
         });
 
         // Compute iris position ratio within eye (0 = left edge, 1 = right edge)

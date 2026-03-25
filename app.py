@@ -84,6 +84,12 @@ def history_page():
     return send_from_directory('.', 'history.html')
 
 
+@app.route('/todo', methods=['GET'])
+@app.route('/todo.html', methods=['GET'])
+def todo_page():
+    return send_from_directory('.', 'todo.html')
+
+
 @app.route('/api/focus-sessions', methods=['POST'])
 def create_focus_session():
     payload = request.get_json(silent=True) or {}
