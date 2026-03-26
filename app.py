@@ -381,6 +381,16 @@ def calendar_page():
     return send_from_directory('.', 'calendar.html')
 
 
+@app.route('/interactive-bg.css', methods=['GET'])
+def interactive_bg_css():
+    return send_from_directory('.', 'interactive-bg.css')
+
+
+@app.route('/interactive-bg.js', methods=['GET'])
+def interactive_bg_js():
+    return send_from_directory('.', 'interactive-bg.js')
+
+
 @app.route('/api/ai-config', methods=['GET'])
 def ai_config():
     api_key = get_ai_api_key()

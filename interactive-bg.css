@@ -1,0 +1,128 @@
+:root {
+    --bg-mesh-1: rgba(0, 212, 255, 0.34);
+    --bg-mesh-2: rgba(123, 47, 247, 0.3);
+    --bg-mesh-3: rgba(0, 230, 118, 0.2);
+}
+
+body {
+    position: relative;
+    isolation: isolate;
+}
+
+body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background:
+        radial-gradient(circle at 15% 12%, rgba(0, 212, 255, 0.18), transparent 38%),
+        radial-gradient(circle at 86% 20%, rgba(123, 47, 247, 0.2), transparent 40%),
+        radial-gradient(circle at 55% 85%, rgba(0, 230, 118, 0.12), transparent 45%),
+        repeating-linear-gradient(
+            120deg,
+            rgba(255, 255, 255, 0.02) 0,
+            rgba(255, 255, 255, 0.02) 2px,
+            transparent 2px,
+            transparent 12px
+        );
+    opacity: 0.8;
+    animation: pageAuraShift 16s ease-in-out infinite alternate;
+}
+
+body > :not(.interactive-bg) {
+    position: relative;
+    z-index: 2;
+}
+
+body > .menu-toggle,
+body > .menu-backdrop,
+body > .side-menu {
+    position: fixed;
+}
+
+body > .menu-toggle {
+    z-index: 3200;
+}
+
+body > .menu-backdrop {
+    z-index: 3000;
+}
+
+body > .side-menu {
+    z-index: 3100;
+}
+
+.interactive-bg {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    overflow: hidden;
+    opacity: 1;
+}
+
+.interactive-bg::before,
+.interactive-bg::after {
+    content: "";
+    position: absolute;
+    inset: -18%;
+    filter: blur(38px);
+}
+
+.interactive-bg::before {
+    background:
+        radial-gradient(circle at 20% 20%, var(--bg-mesh-1), transparent 45%),
+        radial-gradient(circle at 80% 18%, var(--bg-mesh-2), transparent 42%),
+        radial-gradient(circle at 50% 84%, var(--bg-mesh-3), transparent 50%);
+    animation: bgDriftA 14s ease-in-out infinite alternate;
+}
+
+.interactive-bg::after {
+    background:
+        radial-gradient(circle at 75% 75%, rgba(0, 212, 255, 0.22), transparent 40%),
+        radial-gradient(circle at 12% 70%, rgba(123, 47, 247, 0.2), transparent 36%);
+    animation: bgDriftB 18s ease-in-out infinite alternate;
+}
+
+.interactive-bg-canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+    opacity: 1;
+}
+
+body > .interactive-trail {
+    position: fixed;
+    inset: 0;
+    z-index: 5000;
+    pointer-events: none;
+}
+
+.interactive-trail-canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+@keyframes pageAuraShift {
+    0% { transform: scale(1) translate3d(-1%, 0%, 0); }
+    100% { transform: scale(1.05) translate3d(1%, 1.5%, 0); }
+}
+
+@keyframes bgDriftA {
+    0% { transform: translate3d(-2%, -2%, 0) scale(1); }
+    100% { transform: translate3d(3%, 2%, 0) scale(1.06); }
+}
+
+@keyframes bgDriftB {
+    0% { transform: translate3d(2%, 1%, 0) scale(1); }
+    100% { transform: translate3d(-3%, -2%, 0) scale(1.05); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .interactive-bg::before,
+    .interactive-bg::after {
+        animation: none;
+    }
+}
