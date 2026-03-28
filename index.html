@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Eye Focus Tracker</title>
+    <title>Focus Timer</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -160,42 +160,41 @@
             gap: 12px;
         }
 
-        .session-over-screen {
-            position: absolute;
-            inset: 0;
-            background: radial-gradient(circle at top right, #22263f, #121423 60%);
-            color: #e0e0e0;
-            display: none;
-            align-items: center;
-            justify-content: center;
-            text-align: center;
-            padding: 24px;
-        }
-
-        .session-over-screen.show {
-            display: flex;
-        }
-
-        .session-over-screen h2 {
-            font-size: 2rem;
-            margin-bottom: 8px;
-        }
-
-        .session-over-screen p {
-            color: #a3abc5;
-            font-size: 1rem;
-        }
-
-        video, canvas {
-            display: block;
+        .timer-screen {
             width: 100%;
             height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            background:
+                radial-gradient(circle at top right, rgba(0, 212, 255, 0.2), transparent 45%),
+                radial-gradient(circle at bottom left, rgba(123, 47, 247, 0.18), transparent 40%),
+                linear-gradient(160deg, #0f162f 0%, #131a33 55%, #0d1328 100%);
         }
 
-        canvas {
-            position: absolute;
-            top: 0;
-            left: 0;
+        .clock-label {
+            color: #90a1cc;
+            letter-spacing: 2px;
+            font-size: 0.8rem;
+            font-weight: 700;
+        }
+
+        .clock-time {
+            font-size: clamp(2.2rem, 5vw, 4rem);
+            font-weight: 800;
+            color: #f3f8ff;
+            text-shadow: 0 0 18px rgba(84, 189, 255, 0.35);
+            font-variant-numeric: tabular-nums;
+            letter-spacing: 1px;
+        }
+
+        .clock-remaining,
+        .clock-elapsed {
+            color: #c4d3f8;
+            font-size: 1rem;
+            font-variant-numeric: tabular-nums;
         }
 
         .info-panel {
@@ -234,10 +233,10 @@
             color: #999;
         }
 
-        .focused .status-icon { transform: scale(1.1); }
-        .focused .status-text { color: #00e676; }
-        .not-focused .status-text { color: #ff5252; }
-        .no-face .status-text { color: #ffc107; }
+        .running .status-icon { transform: scale(1.08); }
+        .running .status-text { color: #00e676; }
+        .stopped .status-text { color: #ffc107; }
+        .completed .status-text { color: #00d4ff; }
 
         .stat-row {
             display: flex;
@@ -287,30 +286,6 @@
         }
         .btn-danger:hover { background: #e04040; }
 
-        .eye-debug {
-            display: flex;
-            justify-content: space-around;
-            margin-top: 8px;
-        }
-
-        .eye-box {
-            text-align: center;
-        }
-
-        .eye-box canvas {
-            position: static;
-            width: 100px;
-            height: 60px;
-            border-radius: 8px;
-            border: 1px solid #333;
-            background: #111;
-        }
-
-        .eye-label {
-            font-size: 0.75rem;
-            color: #888;
-            margin-top: 4px;
-        }
 
         .log-list {
             max-height: 150px;
@@ -623,7 +598,6 @@
                 width: 100%;
             }
 
-            video, canvas { width: 100%; height: auto; }
             .video-column {
                 width: 100%;
                 max-width: 640px;
@@ -659,14 +633,14 @@
 
     <aside id="sideMenu" class="side-menu" aria-hidden="true">
         <div class="side-menu-title">Features</div>
-        <button id="menuStartBtn" class="feature-btn accent">Start or Stop Tracking</button>
+        <button id="menuStartBtn" class="feature-btn accent">Start or Stop Timer</button>
         <button id="menuHistoryBtn" class="feature-btn">Session History</button>
         <button id="menuTodoBtn" class="feature-btn">To-Do Manager</button>
         <button id="menuSummarizerBtn" class="feature-btn">AI Summarizer</button>
     </aside>
 
-    <h1>Eye Focus Tracker</h1>
-    <p class="subtitle">Real-time gaze detection &mdash; are you looking at the screen?</p>
+    <h1>Focus Timer</h1>
+    <p class="subtitle">Live session timer with progress tracking</p>
 
     <div class="main-container">
         <div class="tracking-area">
@@ -700,7 +674,7 @@
                 <!-- Saved Stats -->
                 <div class="card">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-                        <div style="font-size:0.85rem;color:#888;">Saved Sessions</div>
+                        <div style="font-size:0.85rem;color:#888;">Saved Timer Sessions</div>
                         <div style="display:flex;gap:8px;">
                             <button class="btn btn-primary" id="refreshSavedBtn" style="width:auto;padding:6px 12px;font-size:0.8rem;">Refresh</button>
                         </div>
@@ -710,11 +684,11 @@
                         <span class="stat-value" id="savedTotalSessions">0</span>
                     </div>
                     <div class="stat-row">
-                        <span class="stat-label">Avg Focus Rate</span>
+                        <span class="stat-label">Avg Saved Rate</span>
                         <span class="stat-value" id="savedAvgFocusRate">0%</span>
                     </div>
                     <div class="stat-row">
-                        <span class="stat-label">Total Focus Time</span>
+                        <span class="stat-label">Total Saved Time</span>
                         <span class="stat-value" id="savedTotalFocus">00:00</span>
                     </div>
                     <div class="log-list" id="savedSessionsList" style="margin-top:8px;"></div>
@@ -724,16 +698,14 @@
 
             <div class="video-column">
                 <div class="video-panel">
-                    <video id="video" playsinline></video>
-                    <canvas id="overlay"></canvas>
-                    <div id="sessionOverScreen" class="session-over-screen">
-                        <div>
-                            <h2>Session Over</h2>
-                            <p>Your focus session has ended and data has been saved.</p>
-                        </div>
+                    <div id="timerScreen" class="timer-screen">
+                        <div class="clock-label">LIVE TIMER</div>
+                        <div class="clock-time" id="liveClock">00:00:00</div>
+                        <div class="clock-remaining" id="screenRemaining">Remaining 25:00</div>
+                        <div class="clock-elapsed" id="screenElapsed">Elapsed 00:00</div>
                     </div>
                 </div>
-                <button class="btn btn-primary" id="startBtn" onclick="startTracking()">Start Tracking</button>
+                <button class="btn btn-primary" id="startBtn" onclick="startTracking()">Start Timer</button>
 
                 <!-- To-Do -->
                 <div class="card todo-card">
@@ -749,47 +721,32 @@
 
         <div class="info-panel">
             <!-- Status Card -->
-            <div id="statusCard" class="card status-card no-face">
-                <div class="status-icon" id="statusIcon">⏳</div>
-                <div class="status-text" id="statusText">Initializing...</div>
-                <div class="status-detail" id="statusDetail">Setting up camera &amp; model</div>
+            <div id="statusCard" class="card status-card stopped">
+                <div class="status-icon" id="statusIcon">⏱️</div>
+                <div class="status-text" id="statusText">Ready</div>
+                <div class="status-detail" id="statusDetail">Press Start Timer to begin</div>
             </div>
 
             <!-- Stats Card -->
             <div class="card">
                 <div class="stat-row">
-                    <span class="stat-label">Session Time</span>
+                    <span class="stat-label">Elapsed</span>
                     <span class="stat-value" id="sessionTime">00:00</span>
                 </div>
                 <div class="stat-row">
-                    <span class="stat-label">Focus Time</span>
-                    <span class="stat-value" id="focusTime">00:00</span>
+                    <span class="stat-label">Remaining</span>
+                    <span class="stat-value" id="remainingTime">25:00</span>
                 </div>
                 <div class="stat-row">
-                    <span class="stat-label">Focus Rate</span>
-                    <span class="stat-value" id="focusRate">--%</span>
+                    <span class="stat-label">Progress</span>
+                    <span class="stat-value" id="progressText">0%</span>
                 </div>
                 <div class="stat-row">
-                    <span class="stat-label">Distractions</span>
-                    <span class="stat-value" id="distractionCount">0</span>
+                    <span class="stat-label">Completed Sessions</span>
+                    <span class="stat-value" id="sessionCount">0</span>
                 </div>
                 <div class="progress-bar">
                     <div class="progress-fill" id="progressFill" style="width:0%;background:#ffc107"></div>
-                </div>
-            </div>
-
-            <!-- Eye Close-ups -->
-            <div class="card">
-                <div style="font-size:0.85rem;color:#888;margin-bottom:8px;">Eye Close-ups</div>
-                <div class="eye-debug">
-                    <div class="eye-box">
-                        <canvas id="leftEyeCanvas" width="100" height="60"></canvas>
-                        <div class="eye-label">Left Eye</div>
-                    </div>
-                    <div class="eye-box">
-                        <canvas id="rightEyeCanvas" width="100" height="60"></canvas>
-                        <div class="eye-label">Right Eye</div>
-                    </div>
                 </div>
             </div>
 
@@ -800,102 +757,64 @@
         Copyright &copy; 2026 Eye Focus Tracker Software. All rights reserved.
     </footer>
 
-    <!-- MediaPipe via CDN -->
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
     <script src="interactive-bg.js" defer></script>
 
     <script>
-        // ─── DOM refs ───
-        const video        = document.getElementById('video');
-        const overlay      = document.getElementById('overlay');
-        const ctx          = overlay.getContext('2d');
-        const statusCard   = document.getElementById('statusCard');
-        const statusIcon   = document.getElementById('statusIcon');
-        const statusText   = document.getElementById('statusText');
+        // DOM refs
+        const statusCard = document.getElementById('statusCard');
+        const statusIcon = document.getElementById('statusIcon');
+        const statusText = document.getElementById('statusText');
         const statusDetail = document.getElementById('statusDetail');
-        const sessionTimeEl    = document.getElementById('sessionTime');
-        const focusTimeEl      = document.getElementById('focusTime');
-        const focusRateEl      = document.getElementById('focusRate');
-        const distractionEl    = document.getElementById('distractionCount');
-        const progressFill     = document.getElementById('progressFill');
-        const logList          = document.getElementById('logList');
-        const startBtn         = document.getElementById('startBtn');
-        const refreshSavedBtn  = document.getElementById('refreshSavedBtn');
-        const leftEyeCanvas    = document.getElementById('leftEyeCanvas');
-        const rightEyeCanvas   = document.getElementById('rightEyeCanvas');
-        const leftEyeCtx       = leftEyeCanvas.getContext('2d');
-        const rightEyeCtx      = rightEyeCanvas.getContext('2d');
+        const sessionTimeEl = document.getElementById('sessionTime');
+        const remainingTimeEl = document.getElementById('remainingTime');
+        const progressTextEl = document.getElementById('progressText');
+        const sessionCountEl = document.getElementById('sessionCount');
+        const progressFill = document.getElementById('progressFill');
+        const logList = document.getElementById('logList');
+        const startBtn = document.getElementById('startBtn');
+        const refreshSavedBtn = document.getElementById('refreshSavedBtn');
         const savedTotalSessionsEl = document.getElementById('savedTotalSessions');
-        const savedAvgFocusRateEl  = document.getElementById('savedAvgFocusRate');
-        const savedTotalFocusEl    = document.getElementById('savedTotalFocus');
-        const savedSessionsListEl  = document.getElementById('savedSessionsList');
-        const sessionMinutesInput  = document.getElementById('sessionMinutes');
-        const sessionSecondsInput  = document.getElementById('sessionSeconds');
-        const setTimerBtn          = document.getElementById('setTimerBtn');
-        const clearTimerBtn        = document.getElementById('clearTimerBtn');
-        const timerConfigText      = document.getElementById('timerConfigText');
-        const timerCountdown       = document.getElementById('timerCountdown');
-        const sessionOverScreen    = document.getElementById('sessionOverScreen');
-        const menuToggle           = document.getElementById('menuToggle');
-        const sideMenu             = document.getElementById('sideMenu');
-        const menuBackdrop         = document.getElementById('menuBackdrop');
-        const menuStartBtn         = document.getElementById('menuStartBtn');
-        const menuHistoryBtn       = document.getElementById('menuHistoryBtn');
-        const menuTodoBtn          = document.getElementById('menuTodoBtn');
-        const menuSummarizerBtn    = document.getElementById('menuSummarizerBtn');
-        const openTodoManagerBtn   = document.getElementById('openTodoManagerBtn');
-        const todoListEl           = document.getElementById('todoList');
-        const todoEmptyEl          = document.getElementById('todoEmpty');
+        const savedAvgFocusRateEl = document.getElementById('savedAvgFocusRate');
+        const savedTotalFocusEl = document.getElementById('savedTotalFocus');
+        const savedSessionsListEl = document.getElementById('savedSessionsList');
+        const sessionMinutesInput = document.getElementById('sessionMinutes');
+        const sessionSecondsInput = document.getElementById('sessionSeconds');
+        const setTimerBtn = document.getElementById('setTimerBtn');
+        const clearTimerBtn = document.getElementById('clearTimerBtn');
+        const timerConfigText = document.getElementById('timerConfigText');
+        const timerCountdown = document.getElementById('timerCountdown');
+        const liveClockEl = document.getElementById('liveClock');
+        const screenRemainingEl = document.getElementById('screenRemaining');
+        const screenElapsedEl = document.getElementById('screenElapsed');
+        const menuToggle = document.getElementById('menuToggle');
+        const sideMenu = document.getElementById('sideMenu');
+        const menuBackdrop = document.getElementById('menuBackdrop');
+        const menuStartBtn = document.getElementById('menuStartBtn');
+        const menuHistoryBtn = document.getElementById('menuHistoryBtn');
+        const menuTodoBtn = document.getElementById('menuTodoBtn');
+        const menuSummarizerBtn = document.getElementById('menuSummarizerBtn');
+        const openTodoManagerBtn = document.getElementById('openTodoManagerBtn');
+        const todoListEl = document.getElementById('todoList');
+        const todoEmptyEl = document.getElementById('todoEmpty');
 
-        // ─── State ───
-        let tracking        = false;
-        let sessionStart    = null;
-        let totalFocusMs    = 0;
-        let lastFocused     = false;
-        let lastFocusStamp  = null;
-        let distractionCount = 0;
-        let focusHistory     = [];  // rolling window
-        let camera           = null;
-        let faceMesh         = null;
-        let autoSaveTimer     = null;
-        let clientSessionId   = null;
-        let sessionLimitMs    = 25 * 60 * 1000;
-        let sessionEndAt      = null;
-        let sessionEndTimer   = null;
-        let countdownTimer    = null;
-        let todos             = [];
+        // State
+        let tracking = false;
+        let sessionStart = null;
+        let sessionElapsedMs = 0;
+        let sessionLimitMs = 25 * 60 * 1000;
+        let tickTimer = null;
+        let liveClockTimer = null;
+        let autoSaveTimer = null;
+        let clientSessionId = null;
+        let completedSessions = 0;
+        let todos = [];
 
         const AUTO_SAVE_MS = 15000;
 
-        // MediaPipe Face Mesh landmark indices
-        // Left eye contour
-        const LEFT_EYE  = [33,7,163,144,145,153,154,155,133,173,157,158,159,160,161,246];
-        // Right eye contour
-        const RIGHT_EYE = [362,382,381,380,374,373,390,249,263,466,388,387,386,385,384,398];
-        // Left iris
-        const LEFT_IRIS  = [468,469,470,471,472];
-        // Right iris
-        const RIGHT_IRIS = [473,474,475,476,477];
-        // Nose tip (for head pose)
-        const NOSE_TIP = 1;
-        // Forehead center
-        const FOREHEAD = 10;
-        // Chin
-        const CHIN = 152;
-        // Left & right face edge
-        const LEFT_FACE = 234;
-        const RIGHT_FACE = 454;
-
-        const SENS_THRESHOLDS = [0.15, 0.20, 0.28, 0.35, 0.42]; // iris ratio thresholds
-        const HEAD_THRESHOLDS = [0.12, 0.16, 0.22, 0.28, 0.34]; // head turn thresholds
-        const FIXED_SENSITIVITY_INDEX = 3; // Low sensitivity mode
-
-        // ─── Helpers ───
         function fmtTime(ms) {
             const s = Math.floor(ms / 1000);
             const m = Math.floor(s / 60);
-            return `${String(m).padStart(2,'0')}:${String(s % 60).padStart(2,'0')}`;
+            return `${String(m).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
         }
 
         function fmtCountdown(ms) {
@@ -909,6 +828,17 @@
             return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
         }
 
+        function fmtClock(nowDate) {
+            const h = String(nowDate.getHours()).padStart(2, '0');
+            const m = String(nowDate.getMinutes()).padStart(2, '0');
+            const s = String(nowDate.getSeconds()).padStart(2, '0');
+            return `${h}:${m}:${s}`;
+        }
+
+        function updateLiveClock() {
+            liveClockEl.textContent = fmtClock(new Date());
+        }
+
         function configuredTimerText() {
             const totalSeconds = Math.floor(sessionLimitMs / 1000);
             const minutes = Math.floor(totalSeconds / 60);
@@ -916,13 +846,11 @@
             return `Configured: ${minutes}m ${String(seconds).padStart(2, '0')}s`;
         }
 
-        function updateCountdown() {
-            if (!tracking || !sessionEndAt) {
-                timerCountdown.textContent = 'Not running';
-                return;
-            }
-            const remaining = sessionEndAt - Date.now();
-            timerCountdown.textContent = `Remaining: ${fmtCountdown(remaining)}`;
+        function setStatus(cls, icon, text, detail) {
+            statusCard.className = `card status-card ${cls}`;
+            statusIcon.textContent = icon;
+            statusText.textContent = text;
+            statusDetail.textContent = detail;
         }
 
         function setTimerControlsDisabled(isDisabled) {
@@ -932,48 +860,36 @@
             clearTimerBtn.disabled = isDisabled;
         }
 
-        function showSessionOverScreen(show) {
-            if (show) {
-                video.style.display = 'none';
-                overlay.style.display = 'none';
-                sessionOverScreen.classList.add('show');
-                return;
+        function addLog(msg, cls) {
+            const el = document.createElement('div');
+            el.className = `log-item ${cls}`;
+            const t = new Date();
+            const timeStr = t.toLocaleTimeString();
+            el.innerHTML = `<span class="time">${timeStr}</span>${msg}`;
+            logList.prepend(el);
+            while (logList.children.length > 50) {
+                logList.removeChild(logList.lastChild);
             }
-            video.style.display = 'block';
-            overlay.style.display = 'block';
-            sessionOverScreen.classList.remove('show');
         }
 
-        function playSessionEndBeep() {
-            const AudioCtx = window.AudioContext || window.webkitAudioContext;
-            if (!AudioCtx) return;
+        function updateTimerUI() {
+            const now = Date.now();
+            const elapsed = tracking && sessionStart ? Math.max(0, now - sessionStart) : sessionElapsedMs;
+            const remaining = Math.max(0, sessionLimitMs - elapsed);
+            const progress = sessionLimitMs > 0 ? Math.min(100, Math.round((elapsed / sessionLimitMs) * 100)) : 0;
 
-            try {
-                const audioCtx = new AudioCtx();
-                const now = audioCtx.currentTime;
-                const frequencies = [880, 988, 1046];
+            sessionTimeEl.textContent = fmtTime(elapsed);
+            remainingTimeEl.textContent = fmtCountdown(remaining);
+            progressTextEl.textContent = `${progress}%`;
+            progressFill.style.width = `${progress}%`;
+            progressFill.style.background = progress >= 100 ? '#00d4ff' : progress > 70 ? '#00e676' : progress > 40 ? '#ffc107' : '#ff5252';
+            timerCountdown.textContent = tracking ? `Remaining: ${fmtCountdown(remaining)}` : 'Not running';
 
-                frequencies.forEach((freq, idx) => {
-                    const osc = audioCtx.createOscillator();
-                    const gain = audioCtx.createGain();
-                    const start = now + idx * 0.15;
-                    const stop = start + 0.1;
+            screenRemainingEl.textContent = `Remaining ${fmtCountdown(remaining)}`;
+            screenElapsedEl.textContent = `Elapsed ${fmtTime(elapsed)}`;
 
-                    osc.type = 'sine';
-                    osc.frequency.setValueAtTime(freq, start);
-                    gain.gain.setValueAtTime(0.0001, start);
-                    gain.gain.exponentialRampToValueAtTime(0.12, start + 0.01);
-                    gain.gain.exponentialRampToValueAtTime(0.0001, stop);
-
-                    osc.connect(gain);
-                    gain.connect(audioCtx.destination);
-                    osc.start(start);
-                    osc.stop(stop);
-                });
-
-                setTimeout(() => audioCtx.close(), 900);
-            } catch (error) {
-                console.error(error);
+            if (tracking && remaining <= 0) {
+                stopTracking({ endedByTimer: true });
             }
         }
 
@@ -999,6 +915,8 @@
             sessionSecondsInput.value = String(safeSeconds);
             sessionLimitMs = totalMs;
             timerConfigText.textContent = configuredTimerText();
+            sessionElapsedMs = 0;
+            updateTimerUI();
             addLog(`Session timer set to ${safeMinutes}m ${String(safeSeconds).padStart(2, '0')}s`, 'log-focused');
         }
 
@@ -1006,72 +924,135 @@
             sessionLimitMs = 25 * 60 * 1000;
             sessionMinutesInput.value = '25';
             sessionSecondsInput.value = '0';
+            sessionElapsedMs = 0;
             timerConfigText.textContent = configuredTimerText();
+            updateTimerUI();
             addLog('Session timer reset to 25m 00s', 'log-away');
         }
 
-        function clearSessionTimers() {
-            if (sessionEndTimer) {
-                clearTimeout(sessionEndTimer);
-                sessionEndTimer = null;
+        function makeClientSessionId() {
+            if (window.crypto && crypto.randomUUID) {
+                return crypto.randomUUID();
             }
-            if (countdownTimer) {
-                clearInterval(countdownTimer);
-                countdownTimer = null;
-            }
-            sessionEndAt = null;
+            return `session-${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
         }
 
-        function setMenuOpen(isOpen) {
-            document.body.classList.toggle('menu-open', isOpen);
-            menuToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-            sideMenu.setAttribute('aria-hidden', isOpen ? 'false' : 'true');
-        }
+        async function saveCurrentSession(options = {}) {
+            const isFinal = options.isFinal === true;
+            const endedAtMs = Date.now();
 
-        function setActiveMenuButton() {
-            const rawPath = window.location.pathname.toLowerCase();
-            const file = rawPath.split('/').pop() || 'index.html';
-            const activeIdByPath = {
-                '': 'menuTrackerBtn',
-                'index.html': 'menuTrackerBtn',
-                'history': 'menuHistoryBtn',
-                'history.html': 'menuHistoryBtn',
-                'todo': 'menuTodoBtn',
-                'todo.html': 'menuTodoBtn',
-                'calendar': 'menuCalendarBtn',
-                'calendar.html': 'menuCalendarBtn',
-                'ai-summarizer': 'menuSummarizerBtn',
-                'ai_summarizer.html': 'menuSummarizerBtn',
+            if (!sessionStart || !clientSessionId) {
+                return;
+            }
+
+            const sessionMs = tracking ? Math.max(0, endedAtMs - sessionStart) : sessionElapsedMs;
+            if (sessionMs <= 0) {
+                return;
+            }
+
+            const payload = {
+                startedAt: new Date(sessionStart).toISOString(),
+                endedAt: new Date(endedAtMs).toISOString(),
+                sessionMs,
+                focusMs: sessionMs,
+                focusRate: 100,
+                distractionCount: 0,
+                clientSessionId,
             };
 
-            const activeId = activeIdByPath[file] || activeIdByPath[rawPath] || null;
-            document.querySelectorAll('.side-menu .feature-btn').forEach((btn) => {
-                btn.classList.remove('is-active');
-            });
-
-            if (!activeId) return;
-            const activeBtn = document.getElementById(activeId);
-            if (activeBtn) {
-                activeBtn.classList.add('is-active');
+            try {
+                const response = await fetch('/api/focus-sessions', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+                if (!response.ok) {
+                    throw new Error('Failed to save session');
+                }
+                if (isFinal) {
+                    addLog('Session saved to database', 'log-focused');
+                    await loadSavedStats();
+                }
+            } catch (error) {
+                console.error(error);
+                if (isFinal) {
+                    addLog('Could not save session to database', 'log-away');
+                }
             }
         }
 
-        async function endSessionByTimer() {
-            if (!tracking) return;
-            playSessionEndBeep();
-            addLog('Focus timer finished', 'log-away');
-            await stopTracking({ endedByTimer: true });
+        async function startTracking() {
+            if (tracking) {
+                await stopTracking();
+                return;
+            }
+
+            tracking = true;
+            sessionStart = Date.now();
+            sessionElapsedMs = 0;
+            clientSessionId = makeClientSessionId();
+            setTimerControlsDisabled(true);
+
+            setStatus('running', '▶️', 'Running', 'Live timer in progress');
+            startBtn.textContent = 'Stop Timer';
+            startBtn.className = 'btn btn-danger';
+            logList.innerHTML = '';
+            addLog('Timer started', 'log-focused');
+            addLog(configuredTimerText(), 'log-focused');
+            addLog(`Auto-save every ${Math.floor(AUTO_SAVE_MS / 1000)}s`, 'log-focused');
+
+            if (tickTimer) {
+                clearInterval(tickTimer);
+            }
+            tickTimer = setInterval(updateTimerUI, 250);
+
+            if (autoSaveTimer) {
+                clearInterval(autoSaveTimer);
+            }
+            autoSaveTimer = setInterval(() => {
+                if (tracking) {
+                    saveCurrentSession();
+                }
+            }, AUTO_SAVE_MS);
+
+            updateTimerUI();
         }
 
-        function addLog(msg, cls) {
-            const el = document.createElement('div');
-            el.className = 'log-item ' + cls;
-            const t = new Date();
-            const timeStr = t.toLocaleTimeString();
-            el.innerHTML = `<span class="time">${timeStr}</span>${msg}`;
-            logList.prepend(el);
-            // Keep max 50 entries
-            while (logList.children.length > 50) logList.removeChild(logList.lastChild);
+        async function stopTracking(options = {}) {
+            const endedByTimer = options.endedByTimer === true;
+            if (!tracking || !sessionStart) {
+                return;
+            }
+
+            sessionElapsedMs = Math.max(0, Date.now() - sessionStart);
+            tracking = false;
+
+            if (tickTimer) {
+                clearInterval(tickTimer);
+                tickTimer = null;
+            }
+
+            if (autoSaveTimer) {
+                clearInterval(autoSaveTimer);
+                autoSaveTimer = null;
+            }
+
+            await saveCurrentSession({ isFinal: true });
+
+            if (endedByTimer) {
+                completedSessions += 1;
+                sessionCountEl.textContent = String(completedSessions);
+                addLog('Session finished automatically', 'log-focused');
+                setStatus('completed', '✅', 'Completed', 'Session duration reached');
+            } else {
+                addLog('Timer stopped', 'log-away');
+                setStatus('stopped', '⏸️', 'Stopped', 'Press Start Timer to begin a new session');
+            }
+
+            startBtn.textContent = 'Start Timer';
+            startBtn.className = 'btn btn-primary';
+            setTimerControlsDisabled(false);
+            updateTimerUI();
         }
 
         function escapeHtml(value) {
@@ -1119,64 +1100,6 @@
             }
         }
 
-        function openTodoManager() {
-            window.location.href = 'todo.html';
-        }
-
-        function currentFocusMs(nowTs) {
-            if (lastFocused && lastFocusStamp) {
-                return totalFocusMs + (nowTs - lastFocusStamp);
-            }
-            return totalFocusMs;
-        }
-
-        function makeClientSessionId() {
-            if (window.crypto && crypto.randomUUID) {
-                return crypto.randomUUID();
-            }
-            return `session-${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
-        }
-
-        async function saveCurrentSession(options = {}) {
-            const isFinal = options.isFinal === true;
-            if (!sessionStart || !clientSessionId) return;
-
-            const endedAtMs = Date.now();
-            const sessionMs = Math.max(0, endedAtMs - sessionStart);
-            const focusMs = Math.min(currentFocusMs(endedAtMs), sessionMs);
-            const focusRate = sessionMs > 0 ? (focusMs / sessionMs) * 100 : 0;
-
-            const payload = {
-                startedAt: new Date(sessionStart).toISOString(),
-                endedAt: new Date(endedAtMs).toISOString(),
-                sessionMs,
-                focusMs,
-                focusRate,
-                distractionCount,
-                clientSessionId
-            };
-
-            try {
-                const response = await fetch('/api/focus-sessions', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                if (!response.ok) {
-                    throw new Error('Failed to save session');
-                }
-                if (isFinal) {
-                    addLog('Session saved to database', 'log-focused');
-                    await loadSavedStats();
-                }
-            } catch (error) {
-                console.error(error);
-                if (isFinal) {
-                    addLog('Could not save session to database', 'log-away');
-                }
-            }
-        }
-
         function renderSavedSessions(items) {
             savedSessionsListEl.innerHTML = '';
             if (!items.length) {
@@ -1191,7 +1114,7 @@
                 const item = document.createElement('div');
                 item.className = 'log-item';
                 const endTime = new Date(session.ended_at).toLocaleString();
-                const summary = `${Math.round(session.focus_rate)}% focus | ${fmtTime(session.focus_ms)} | distractions ${session.distraction_count}`;
+                const summary = `${fmtTime(session.session_ms)} | saved ${Math.round(session.focus_rate)}%`;
                 item.innerHTML = `<span class="time">${endTime}</span>${summary}`;
                 savedSessionsListEl.appendChild(item);
             }
@@ -1213,6 +1136,47 @@
             } catch (error) {
                 console.error(error);
                 savedSessionsListEl.innerHTML = '<div class="log-item">Unable to load saved sessions</div>';
+            }
+        }
+
+        function openTodoManager() {
+            window.location.href = 'todo.html';
+        }
+
+        function setMenuOpen(isOpen) {
+            document.body.classList.toggle('menu-open', isOpen);
+            menuToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+            sideMenu.setAttribute('aria-hidden', isOpen ? 'false' : 'true');
+        }
+
+        function setActiveMenuButton() {
+            const rawPath = window.location.pathname.toLowerCase();
+            const file = rawPath.split('/').pop() || 'index.html';
+            const activeIdByPath = {
+                '': 'menuTrackerBtn',
+                'index.html': 'menuTrackerBtn',
+                'history': 'menuHistoryBtn',
+                'history.html': 'menuHistoryBtn',
+                'todo': 'menuTodoBtn',
+                'todo.html': 'menuTodoBtn',
+                'calendar': 'menuCalendarBtn',
+                'calendar.html': 'menuCalendarBtn',
+                'ai-summarizer': 'menuSummarizerBtn',
+                'ai_summarizer.html': 'menuSummarizerBtn',
+            };
+
+            const activeId = activeIdByPath[file] || activeIdByPath[rawPath] || null;
+            document.querySelectorAll('.side-menu .feature-btn').forEach((btn) => {
+                btn.classList.remove('is-active');
+            });
+
+            if (!activeId) {
+                return;
+            }
+
+            const activeBtn = document.getElementById(activeId);
+            if (activeBtn) {
+                activeBtn.classList.add('is-active');
             }
         }
 
@@ -1247,368 +1211,10 @@
             }
         });
 
-        // Compute iris position ratio within eye (0 = left edge, 1 = right edge)
-        function irisRatio(landmarks, eyeIndices, irisIndices) {
-            // Eye bounding box
-            let minX = Infinity, maxX = -Infinity;
-            for (const i of eyeIndices) {
-                const x = landmarks[i].x;
-                if (x < minX) minX = x;
-                if (x > maxX) maxX = x;
-            }
-            // Iris center
-            const irisCenter = landmarks[irisIndices[0]]; // center point
-            const eyeWidth = maxX - minX;
-            if (eyeWidth < 0.001) return 0.5;
-            return (irisCenter.x - minX) / eyeWidth;
-        }
-
-        // Vertical iris ratio (for up/down detection)
-        function irisRatioY(landmarks, eyeIndices, irisIndices) {
-            let minY = Infinity, maxY = -Infinity;
-            for (const i of eyeIndices) {
-                const y = landmarks[i].y;
-                if (y < minY) minY = y;
-                if (y > maxY) maxY = y;
-            }
-            const irisCenter = landmarks[irisIndices[0]];
-            const eyeHeight = maxY - minY;
-            if (eyeHeight < 0.001) return 0.5;
-            return (irisCenter.y - minY) / eyeHeight;
-        }
-
-        // Eye aspect ratio (to detect blinks / closed eyes)
-        function eyeAspectRatio(landmarks, eyeIndices) {
-            // Vertical distances
-            const v1 = Math.abs(landmarks[eyeIndices[1]].y - landmarks[eyeIndices[5]].y);
-            const v2 = Math.abs(landmarks[eyeIndices[2]].y - landmarks[eyeIndices[4]].y);
-            // Horizontal distance
-            const h = Math.abs(landmarks[eyeIndices[0]].x - landmarks[eyeIndices[3]].x);
-            if (h < 0.001) return 0;
-            return (v1 + v2) / (2.0 * h);
-        }
-
-        // Head pose: check if face is turned away
-        function headTurnRatio(landmarks) {
-            const nose = landmarks[NOSE_TIP];
-            const left = landmarks[LEFT_FACE];
-            const right = landmarks[RIGHT_FACE];
-            const faceWidth = right.x - left.x;
-            if (Math.abs(faceWidth) < 0.001) return 0.5;
-            return (nose.x - left.x) / faceWidth;
-        }
-
-        function headTiltRatio(landmarks) {
-            const nose = landmarks[NOSE_TIP];
-            const forehead = landmarks[FOREHEAD];
-            const chin = landmarks[CHIN];
-            const faceHeight = chin.y - forehead.y;
-            if (Math.abs(faceHeight) < 0.001) return 0.5;
-            return (nose.y - forehead.y) / faceHeight;
-        }
-
-        // Draw eye region onto small canvas
-        function drawEyeCloseup(targetCtx, targetCanvas, landmarks, eyeIndices, irisIndices) {
-            const w = video.videoWidth || 640;
-            const h = video.videoHeight || 480;
-
-            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-            for (const i of eyeIndices) {
-                const lm = landmarks[i];
-                const px = lm.x * w;
-                const py = lm.y * h;
-                if (px < minX) minX = px;
-                if (px > maxX) maxX = px;
-                if (py < minY) minY = py;
-                if (py > maxY) maxY = py;
-            }
-
-            const padX = (maxX - minX) * 0.5;
-            const padY = (maxY - minY) * 1.0;
-            const sx = Math.max(0, minX - padX);
-            const sy = Math.max(0, minY - padY);
-            const sw = Math.min(w - sx, (maxX - minX) + 2 * padX);
-            const sh = Math.min(h - sy, (maxY - minY) + 2 * padY);
-
-            targetCtx.clearRect(0, 0, targetCanvas.width, targetCanvas.height);
-            targetCtx.drawImage(video, sx, sy, sw, sh, 0, 0, targetCanvas.width, targetCanvas.height);
-
-            // Draw iris dot
-            const irisCenter = landmarks[irisIndices[0]];
-            const ix = ((irisCenter.x * w) - sx) / sw * targetCanvas.width;
-            const iy = ((irisCenter.y * h) - sy) / sh * targetCanvas.height;
-            targetCtx.beginPath();
-            targetCtx.arc(ix, iy, 3, 0, 2 * Math.PI);
-            targetCtx.fillStyle = '#00ff88';
-            targetCtx.fill();
-        }
-
-        // ─── Main detection callback ───
-        function onResults(results) {
-            if (!tracking) return;
-
-            const w = overlay.width = video.videoWidth || 640;
-            const h = overlay.height = video.videoHeight || 480;
-            ctx.clearRect(0, 0, w, h);
-
-            if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) {
-                setStatus('no-face', '🚫', 'No Face Detected', 'Please position your face in view');
-                return;
-            }
-
-            const landmarks = results.multiFaceLandmarks[0];
-            const sensIdx = FIXED_SENSITIVITY_INDEX;
-
-            // ─── Draw face mesh (subtle) ───
-            ctx.strokeStyle = 'rgba(100, 200, 255, 0.15)';
-            ctx.lineWidth = 0.5;
-            // Draw eye contours
-            drawContour(ctx, landmarks, LEFT_EYE, w, h, 'rgba(0, 230, 118, 0.6)');
-            drawContour(ctx, landmarks, RIGHT_EYE, w, h, 'rgba(0, 230, 118, 0.6)');
-
-            // Draw iris points
-            drawIris(ctx, landmarks, LEFT_IRIS, w, h, '#00ff88');
-            drawIris(ctx, landmarks, RIGHT_IRIS, w, h, '#00ff88');
-
-            // ─── Compute gaze metrics ───
-            const leftRatioX  = irisRatio(landmarks, LEFT_EYE, LEFT_IRIS);
-            const rightRatioX = irisRatio(landmarks, RIGHT_EYE, RIGHT_IRIS);
-            const leftRatioY  = irisRatioY(landmarks, LEFT_EYE, LEFT_IRIS);
-            const rightRatioY = irisRatioY(landmarks, RIGHT_EYE, RIGHT_IRIS);
-            const avgRatioX   = (leftRatioX + rightRatioX) / 2;
-            const avgRatioY   = (leftRatioY + rightRatioY) / 2;
-
-            // Head pose
-            const headTurn = headTurnRatio(landmarks);
-            const headTilt = headTiltRatio(landmarks);
-
-            // EAR for blink detection
-            const leftEAR  = eyeAspectRatio(landmarks, LEFT_EYE);
-            const rightEAR = eyeAspectRatio(landmarks, RIGHT_EYE);
-            const avgEAR   = (leftEAR + rightEAR) / 2;
-
-            // Draw eye close-ups
-            drawEyeCloseup(leftEyeCtx, leftEyeCanvas, landmarks, LEFT_EYE, LEFT_IRIS);
-            drawEyeCloseup(rightEyeCtx, rightEyeCanvas, landmarks, RIGHT_EYE, RIGHT_IRIS);
-
-            // ─── Determine focus ───
-            const irisThreshold = SENS_THRESHOLDS[sensIdx];
-            const headThreshold = HEAD_THRESHOLDS[sensIdx];
-
-            // Iris centered around 0.5 means looking at screen
-            const irisDeviationX = Math.abs(avgRatioX - 0.5);
-            const irisDeviationY = Math.abs(avgRatioY - 0.45); // slightly above center is normal
-            const headDeviationX = Math.abs(headTurn - 0.5);
-            const headDeviationY = Math.abs(headTilt - 0.38);
-
-            const eyesClosed = avgEAR < 0.15;
-            const lookingAway = irisDeviationX > irisThreshold || irisDeviationY > (irisThreshold * 1.2);
-            const headTurned  = headDeviationX > headThreshold || headDeviationY > (headThreshold * 1.0);
-
-            const isFocused = !eyesClosed && !lookingAway && !headTurned;
-
-            // Draw gaze indicator on overlay
-            const gazeX = w / 2 + (avgRatioX - 0.5) * w * 0.8;
-            const gazeY = h / 2 + (avgRatioY - 0.45) * h * 0.8;
-            ctx.beginPath();
-            ctx.arc(gazeX, gazeY, 12, 0, 2 * Math.PI);
-            ctx.fillStyle = isFocused ? 'rgba(0, 230, 118, 0.4)' : 'rgba(255, 82, 82, 0.4)';
-            ctx.fill();
-            ctx.beginPath();
-            ctx.arc(gazeX, gazeY, 4, 0, 2 * Math.PI);
-            ctx.fillStyle = isFocused ? '#00e676' : '#ff5252';
-            ctx.fill();
-
-            // ─── Update state ───
-            const now = Date.now();
-            if (isFocused) {
-                if (!lastFocused) {
-                    lastFocusStamp = now;
-                    addLog('Focused on screen', 'log-focused');
-                }
-                setStatus('focused', '👁️', 'Focused', detailText(irisDeviationX, headDeviationX));
-            } else {
-                if (lastFocused && lastFocusStamp) {
-                    totalFocusMs += (now - lastFocusStamp);
-                }
-                if (lastFocused) {
-                    distractionCount++;
-                    distractionEl.textContent = distractionCount;
-                    const reason = eyesClosed ? 'Eyes closed' : lookingAway ? 'Looking away' : 'Head turned';
-                    addLog(`Distracted — ${reason}`, 'log-away');
-                }
-                const reason = eyesClosed ? 'Eyes appear closed' :
-                               lookingAway ? 'Eyes looking away from screen' :
-                               'Head turned away';
-                setStatus('not-focused', '😵', 'Not Focused', reason);
-            }
-            lastFocused = isFocused;
-
-            // Update accumulators
-            if (isFocused && lastFocusStamp) {
-                const currentFocus = totalFocusMs + (now - lastFocusStamp);
-                const elapsed = now - sessionStart;
-                focusTimeEl.textContent = fmtTime(currentFocus);
-                const rate = elapsed > 0 ? Math.round((currentFocus / elapsed) * 100) : 0;
-                focusRateEl.textContent = rate + '%';
-                progressFill.style.width = rate + '%';
-                progressFill.style.background = rate > 70 ? '#00e676' : rate > 40 ? '#ffc107' : '#ff5252';
-            }
-            sessionTimeEl.textContent = fmtTime(now - sessionStart);
-        }
-
-        function detailText(irisDeviation, headDeviation) {
-            const conf = Math.max(0, Math.round((1 - (irisDeviation + headDeviation)) * 100));
-            return `Confidence: ${conf}%`;
-        }
-
-        function setStatus(cls, icon, text, detail) {
-            statusCard.className = 'card status-card ' + cls;
-            statusIcon.textContent = icon;
-            statusText.textContent = text;
-            statusDetail.textContent = detail;
-        }
-
-        function drawContour(c, lm, indices, w, h, color) {
-            c.strokeStyle = color;
-            c.lineWidth = 1.5;
-            c.beginPath();
-            for (let i = 0; i < indices.length; i++) {
-                const p = lm[indices[i]];
-                if (i === 0) c.moveTo(p.x * w, p.y * h);
-                else c.lineTo(p.x * w, p.y * h);
-            }
-            c.closePath();
-            c.stroke();
-        }
-
-        function drawIris(c, lm, indices, w, h, color) {
-            c.fillStyle = color;
-            for (const i of indices) {
-                const p = lm[i];
-                c.beginPath();
-                c.arc(p.x * w, p.y * h, 2, 0, 2 * Math.PI);
-                c.fill();
-            }
-        }
-
-        // ─── Start / Stop ───
-        async function startTracking() {
-            if (tracking) {
-                stopTracking();
-                return;
-            }
-
-            showSessionOverScreen(false);
-
-            startBtn.textContent = 'Loading model...';
-            startBtn.disabled = true;
-
-            try {
-                // Initialize FaceMesh
-                faceMesh = new FaceMesh({
-                    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
-                });
-                faceMesh.setOptions({
-                    maxNumFaces: 1,
-                    refineLandmarks: true, // enables iris landmarks
-                    minDetectionConfidence: 0.5,
-                    minTrackingConfidence: 0.5
-                });
-                faceMesh.onResults(onResults);
-
-                // Start camera
-                camera = new Camera(video, {
-                    onFrame: async () => {
-                        if (tracking) await faceMesh.send({ image: video });
-                    },
-                    width: 640,
-                    height: 480
-                });
-                await camera.start();
-
-                // Reset state
-                tracking = true;
-                sessionStart = Date.now();
-                totalFocusMs = 0;
-                lastFocused = false;
-                lastFocusStamp = null;
-                distractionCount = 0;
-                clientSessionId = makeClientSessionId();
-                distractionEl.textContent = '0';
-                logList.innerHTML = '';
-                addLog('Tracking started', 'log-focused');
-                addLog(`Auto-save every ${Math.floor(AUTO_SAVE_MS / 1000)}s`, 'log-focused');
-                addLog(configuredTimerText(), 'log-focused');
-
-                sessionEndAt = sessionStart + sessionLimitMs;
-                updateCountdown();
-                setTimerControlsDisabled(true);
-
-                sessionEndTimer = setTimeout(() => {
-                    endSessionByTimer();
-                }, sessionLimitMs);
-
-                countdownTimer = setInterval(() => {
-                    if (!tracking) return;
-                    updateCountdown();
-                }, 250);
-
-                if (autoSaveTimer) {
-                    clearInterval(autoSaveTimer);
-                }
-                autoSaveTimer = setInterval(() => {
-                    if (tracking) {
-                        saveCurrentSession();
-                    }
-                }, AUTO_SAVE_MS);
-
-                startBtn.textContent = 'Stop Tracking';
-                startBtn.className = 'btn btn-danger';
-                startBtn.disabled = false;
-            } catch (err) {
-                console.error(err);
-                setStatus('no-face', '❌', 'Error', 'Camera access denied or unavailable');
-                startBtn.textContent = 'Start Tracking';
-                startBtn.disabled = false;
-                setTimerControlsDisabled(false);
-            }
-        }
-
-        async function stopTracking(options = {}) {
-            const endedByTimer = options.endedByTimer === true;
-            tracking = false;
-            if (lastFocused && lastFocusStamp) {
-                totalFocusMs += (Date.now() - lastFocusStamp);
-            }
-
-            if (autoSaveTimer) {
-                clearInterval(autoSaveTimer);
-                autoSaveTimer = null;
-            }
-
-            clearSessionTimers();
-            setTimerControlsDisabled(false);
-
-            if (camera) camera.stop();
-            ctx.clearRect(0, 0, overlay.width, overlay.height);
-            if (endedByTimer) {
-                addLog('Session ended automatically', 'log-away');
-                showSessionOverScreen(true);
-                setStatus('no-face', '✅', 'Session Over', 'Time completed and data saved');
-            } else {
-                addLog('Tracking stopped', 'log-away');
-                showSessionOverScreen(false);
-                setStatus('no-face', '⏸️', 'Stopped', 'Click Start to resume');
-            }
-            timerCountdown.textContent = 'Not running';
-            startBtn.textContent = 'Start Tracking';
-            startBtn.className = 'btn btn-primary';
-
-            await saveCurrentSession({ isFinal: true });
-        }
-
         timerConfigText.textContent = configuredTimerText();
+        updateLiveClock();
+        liveClockTimer = setInterval(updateLiveClock, 1000);
+        updateTimerUI();
         setActiveMenuButton();
         loadSavedStats();
         loadTodos();

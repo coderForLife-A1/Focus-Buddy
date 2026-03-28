@@ -1,37 +1,38 @@
-# Focus Tracker
+# Focus Timer
 
-- This is a web app that tracks focus of a person on the screen and detects if he/she is distracted from the screen.
-- It uses individual eye tracking and monitors it thoroughout the session.
-- It has a history page linked to a database that keeps record of all focus sessions.
-- It runs on a flask server.
+This project is a Flask-based productivity app centered on a live timer screen.
+
+## Features
+
+- Live timer screen with current clock, elapsed time, and remaining time.
+- Configurable session duration (minutes and seconds).
+- Start and stop timer controls with automatic session completion at time limit.
+- Session stats and history saved to SQLite.
+- To-do manager, history view, calendar view, and AI summarizer pages.
+
+## Tech Stack
+
+- Backend: Flask
+- Storage: SQLite
+- Frontend: HTML, CSS, vanilla JavaScript
 
 ## Run Locally
 
-Clone the project
+1. Open a terminal in this project folder.
+2. Install Flask (if needed):
 
 ```bash
-  git clone https://github.com/coderForLife-A1/Focus-Buddy
+pip install flask
 ```
 
-Go to the project directory
+3. Start the app:
 
 ```bash
-  cd project-directory-address
+python app.py
 ```
 
-Install Flask (if not installed already)
+4. Open your browser and visit:
 
-```bash
-  pip install flask
-```
-
-Start the server
-
-```bash
-  python app.py
-```
-
-Open in browser
-```bash
-  Localhost link
+```text
+http://127.0.0.1:5000/
 ```
