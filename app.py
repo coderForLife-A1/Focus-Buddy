@@ -155,9 +155,11 @@ def build_local_summary_response(local_summary, warning, ai_error=None):
 
 def infer_ai_provider(api_key):
     configured_provider = os.getenv('AI_PROVIDER', '').strip().lower()
-    if configured_provider in ('openai', 'gemini', 'claude'):
+    if configured_provider in ('openai', 'openrouter', 'gemini', 'claude'):
         return configured_provider
 
+    if str(api_key).startswith('sk-or-v1-'):
+        return 'openrouter'
     if str(api_key).startswith('AIza'):
         return 'gemini'
     if str(api_key).startswith('sk-ant-'):
@@ -193,6 +195,52 @@ def ai_summarize_with_openai(api_key, text, ratio_percent):
     request_data = json.dumps(payload).encode('utf-8')
     req = urlrequest.Request(
         'https://api.openai.com/v1/chat/completions',
+        data=request_data,
+        headers={
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {api_key}',
+        },
+        method='POST',
+    )
+
+    with urlrequest.urlopen(req, timeout=60) as response:
+        body = response.read().decode('utf-8')
+        parsed = json.loads(body)
+        choices = parsed.get('choices') or []
+        if not choices:
+            raise ValueError('No choices returned by AI provider')
+        message = choices[0].get('message') or {}
+        summary = str(message.get('content') or '').strip()
+        if not summary:
+            raise ValueError('Empty summary returned by AI provider')
+        return summary
+
+
+def ai_summarize_with_openrouter(api_key, text, ratio_percent):
+    sentences = split_sentences(text)
+    sentence_goal = max(1, min(12, round((ratio_percent / 100.0) * max(1, len(sentences)))))
+
+    payload = {
+        'model': 'openai/gpt-4o-mini',
+        'temperature': 0.2,
+        'messages': [
+            {
+                'role': 'system',
+                'content': 'You are a concise summarizer. Return only the final summary text without headings.'
+            },
+            {
+                'role': 'user',
+                'content': (
+                    f'Summarize the following content in about {sentence_goal} sentences. '
+                    f'Keep the most important points and keep it factual.\n\n{text}'
+                )
+            },
+        ],
+    }
+
+    request_data = json.dumps(payload).encode('utf-8')
+    req = urlrequest.Request(
+        'https://openrouter.ai/api/v1/chat/completions',
         data=request_data,
         headers={
             'Content-Type': 'application/json',
@@ -432,6 +480,8 @@ def ai_summarize():
             ai_summary = ai_summarize_with_gemini(api_key, source_text, ratio_percent)
         elif provider == 'claude':
             ai_summary = ai_summarize_with_claude(api_key, source_text, ratio_percent)
+        elif provider == 'openrouter':
+            ai_summary = ai_summarize_with_openrouter(api_key, source_text, ratio_percent)
         else:
             ai_summary = ai_summarize_with_openai(api_key, source_text, ratio_percent)
 
