@@ -536,14 +536,16 @@
             -webkit-backdrop-filter: blur(0px);
             opacity: 0;
             pointer-events: none;
-            transition: opacity 0.65s ease, backdrop-filter 0.65s ease, -webkit-backdrop-filter 0.65s ease;
-            z-index: 1250;
+            transition: opacity 0.65s cubic-bezier(0.2, 0.8, 0.2, 1), backdrop-filter 0.65s cubic-bezier(0.2, 0.8, 0.2, 1), -webkit-backdrop-filter 0.65s cubic-bezier(0.2, 0.8, 0.2, 1);
+            z-index: 1800;
         }
 
         .cinematic-backdrop.show {
             opacity: 1;
-            backdrop-filter: blur(8px);
-            -webkit-backdrop-filter: blur(8px);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            background: rgba(8, 12, 24, 0.55);
+            pointer-events: auto;
         }
 
         .timer-dialog {
@@ -562,22 +564,47 @@
         .main-container.timer-cinematic .video-column,
         .main-container.timer-cinematic-exit .video-column {
             position: relative;
-            z-index: 1305;
+            z-index: 1900;
         }
 
         .main-container.timer-cinematic .timer-dialog,
         .main-container.timer-cinematic-exit .timer-dialog {
             position: relative;
-            z-index: 1310;
+            top: auto;
+            left: auto;
+            width: 100%;
+            z-index: 2100;
+            transform: scale(1);
         }
 
         .main-container.timer-cinematic .timer-dialog {
-            transform: scale(1.65);
+            transform: scale(1.22);
         }
 
         .main-container.timer-cinematic .video-panel {
             border-color: #5acbff;
             box-shadow: 0 36px 90px rgba(5, 12, 34, 0.75);
+        }
+
+        /* Keep status + stats panel visible on the right in cinematic mode. */
+        .main-container.timer-cinematic > .info-panel,
+        .main-container.timer-cinematic-exit > .info-panel {
+            position: fixed;
+            top: 50%;
+            left: min(calc(100vw - 324px), calc(50% + 420px));
+            transform: translateY(-50%);
+            width: 300px;
+            z-index: 2050;
+            pointer-events: auto !important;
+            filter: none !important;
+            opacity: 1 !important;
+            transition: transform 0.65s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.65s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+
+        .main-container.timer-cinematic > .info-panel .card,
+        .main-container.timer-cinematic-exit > .info-panel .card {
+            filter: none !important;
+            opacity: 1 !important;
         }
 
         .main-container.timer-cinematic .left-column,
@@ -587,11 +614,58 @@
         .main-container.timer-cinematic-exit .info-panel,
         .main-container.timer-cinematic-exit .video-column > :not(.timer-dialog) {
             position: relative;
-            z-index: 1200;
-            filter: blur(5px);
-            opacity: 0.3;
-            transition: filter 0.55s ease, opacity 0.55s ease;
+            z-index: 1000;
             pointer-events: none;
+        }
+
+        .main-container.timer-cinematic .video-column > :not(.timer-dialog),
+        .main-container.timer-cinematic-exit .video-column > :not(.timer-dialog) {
+            filter: blur(12px);
+            opacity: 0.22;
+            transition: filter 0.65s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.65s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+
+        .left-column,
+        .info-panel,
+        .video-column > :not(.timer-dialog),
+        .blur-target,
+        h1,
+        .subtitle,
+        .software-footer,
+        .menu-toggle,
+        .side-menu {
+            transition: filter 0.65s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.65s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+
+        body.timer-cinematic-active .left-column,
+        body.timer-cinematic-active .info-panel,
+        body.timer-cinematic-active .video-column > :not(.timer-dialog),
+        body.timer-cinematic-active .blur-target,
+        body.timer-cinematic-active .left-column .card,
+        body.timer-cinematic-active .left-column .timer-card,
+        body.timer-cinematic-active .video-column .todo-card,
+        body.timer-cinematic-active .info-panel .card,
+        body.timer-cinematic-active h1,
+        body.timer-cinematic-active .subtitle,
+        body.timer-cinematic-active .software-footer,
+        body.timer-cinematic-active .menu-toggle,
+        body.timer-cinematic-active .side-menu {
+            filter: blur(12px);
+            opacity: 0.22;
+            pointer-events: none;
+        }
+
+        body.timer-cinematic-active .main-container > .info-panel,
+        body.timer-cinematic-active .main-container > .info-panel .card {
+            filter: none !important;
+            opacity: 1 !important;
+            pointer-events: auto !important;
+        }
+
+        /* startup-fade uses animation-fill-mode: both and can pin filter: blur(0), so disable it during cinematic blur */
+        body.timer-cinematic-active .startup-fade,
+        body.timer-cinematic-active .startup-fade * {
+            animation: none !important;
         }
 
         .side-menu {
@@ -699,7 +773,19 @@
             }
 
             .main-container.timer-cinematic .timer-dialog {
+                width: 100%;
                 transform: scale(1.06);
+            }
+
+            .main-container.timer-cinematic > .info-panel,
+            .main-container.timer-cinematic-exit > .info-panel {
+                position: static;
+                top: auto;
+                left: auto;
+                transform: none;
+                width: 100%;
+                z-index: 1000;
+                pointer-events: none !important;
             }
 
             .main-container.timer-cinematic .left-column,
@@ -708,8 +794,24 @@
             .main-container.timer-cinematic-exit .left-column,
             .main-container.timer-cinematic-exit .info-panel,
             .main-container.timer-cinematic-exit .video-column > :not(.timer-dialog) {
-                filter: blur(3px);
-                opacity: 0.4;
+                pointer-events: none;
+            }
+
+            body.timer-cinematic-active .left-column,
+            body.timer-cinematic-active .info-panel,
+            body.timer-cinematic-active .video-column > :not(.timer-dialog),
+            body.timer-cinematic-active .blur-target,
+            body.timer-cinematic-active .left-column .card,
+            body.timer-cinematic-active .left-column .timer-card,
+            body.timer-cinematic-active .video-column .todo-card,
+            body.timer-cinematic-active .info-panel .card,
+            body.timer-cinematic-active h1,
+            body.timer-cinematic-active .subtitle,
+            body.timer-cinematic-active .software-footer,
+            body.timer-cinematic-active .menu-toggle,
+            body.timer-cinematic-active .side-menu {
+                filter: blur(8px);
+                opacity: 0.3;
             }
         }
     </style>
@@ -739,7 +841,7 @@
     <div class="main-container">
         <div class="tracking-area">
             <div class="left-column">
-                <div class="timer-card">
+                <div id="focusSessionTimerCard" class="timer-card blur-target">
                     <div class="timer-title">Focus Session Timer</div>
                     <div class="timer-inputs">
                         <div>
@@ -760,13 +862,13 @@
                 </div>
 
                 <!-- Log -->
-                <div class="card">
+                <div id="activityLogCard" class="card blur-target">
                     <div style="font-size:0.85rem;color:#888;margin-bottom:8px;">Activity Log</div>
                     <div class="log-list" id="logList"></div>
                 </div>
 
                 <!-- Saved Stats -->
-                <div class="card">
+                <div id="savedSessionsCard" class="card blur-target">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
                         <div style="font-size:0.85rem;color:#888;">Saved Timer Sessions</div>
                         <div style="display:flex;gap:8px;">
@@ -805,7 +907,7 @@
                 </div>
 
                 <!-- To-Do -->
-                <div class="card todo-card">
+                <div id="todoCard" class="card todo-card blur-target">
                     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px;">
                         <div class="todo-card-title" style="margin-bottom:0;">Session To-Do List</div>
                         <button class="btn btn-primary" id="openTodoManagerBtn" style="width:auto;padding:8px 12px;font-size:0.82rem;">Manage Tasks</button>
@@ -896,6 +998,17 @@
         const todoEmptyEl = document.getElementById('todoEmpty');
         const cinematicBackdrop = document.getElementById('cinematicBackdrop');
         const mainContainer = document.querySelector('.main-container');
+        const pageTitleEl = document.querySelector('h1');
+        const subtitleEl = document.querySelector('.subtitle');
+        const footerEl = document.querySelector('.software-footer');
+        const videoColumn = document.querySelector('.video-column');
+        const leftColumnEl = document.querySelector('.left-column');
+        const infoPanelEl = document.querySelector('.info-panel');
+        const timerDialogEl = document.querySelector('.timer-dialog');
+        const focusSessionTimerCardEl = document.getElementById('focusSessionTimerCard');
+        const activityLogCardEl = document.getElementById('activityLogCard');
+        const savedSessionsCardEl = document.getElementById('savedSessionsCard');
+        const todoCardEl = document.getElementById('todoCard');
 
         // State
         let tracking = false;
@@ -964,6 +1077,82 @@
             clearTimerBtn.disabled = isDisabled;
         }
 
+        function setImportantStyle(el, property, value) {
+            if (!el) return;
+            el.style.setProperty(property, value, 'important');
+        }
+
+        function clearStyle(el, property) {
+            if (!el) return;
+            el.style.removeProperty(property);
+        }
+
+        function setBackgroundBlur(isOn) {
+            const nonTimerTargets = [
+                leftColumnEl,
+                focusSessionTimerCardEl,
+                activityLogCardEl,
+                savedSessionsCardEl,
+                todoCardEl,
+                pageTitleEl,
+                subtitleEl,
+                footerEl,
+                menuToggle,
+                sideMenu,
+                ...(videoColumn ? Array.from(videoColumn.children).filter((child) => !child.classList.contains('timer-dialog')) : []),
+            ].filter(Boolean);
+
+            if (isOn) {
+                for (const el of nonTimerTargets) {
+                    setImportantStyle(el, 'transition', 'filter 0.65s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.65s cubic-bezier(0.2, 0.8, 0.2, 1)');
+                    setImportantStyle(el, 'filter', 'blur(12px)');
+                    setImportantStyle(el, 'opacity', '0.22');
+                    setImportantStyle(el, 'pointer-events', 'none');
+                }
+
+                // Keep timer and right info panel visible and interactive.
+                setImportantStyle(timerDialogEl, 'z-index', '2100');
+                setImportantStyle(timerDialogEl, 'pointer-events', 'auto');
+                setImportantStyle(timerDialogEl, 'filter', 'none');
+                setImportantStyle(timerDialogEl, 'opacity', '1');
+
+                if (infoPanelEl && window.innerWidth > 1000) {
+                    setImportantStyle(infoPanelEl, 'position', 'fixed');
+                    setImportantStyle(infoPanelEl, 'top', '50%');
+                    setImportantStyle(infoPanelEl, 'left', 'min(calc(100vw - 324px), calc(50% + 420px))');
+                    setImportantStyle(infoPanelEl, 'transform', 'translateY(-50%)');
+                    setImportantStyle(infoPanelEl, 'width', '300px');
+                    setImportantStyle(infoPanelEl, 'z-index', '2050');
+                    setImportantStyle(infoPanelEl, 'filter', 'none');
+                    setImportantStyle(infoPanelEl, 'opacity', '1');
+                    setImportantStyle(infoPanelEl, 'pointer-events', 'auto');
+                }
+                return;
+            }
+
+            for (const el of nonTimerTargets) {
+                clearStyle(el, 'transition');
+                clearStyle(el, 'filter');
+                clearStyle(el, 'opacity');
+                clearStyle(el, 'pointer-events');
+            }
+
+            clearStyle(timerDialogEl, 'z-index');
+            clearStyle(timerDialogEl, 'pointer-events');
+            clearStyle(timerDialogEl, 'filter');
+            clearStyle(timerDialogEl, 'opacity');
+
+            clearStyle(infoPanelEl, 'position');
+            clearStyle(infoPanelEl, 'top');
+            clearStyle(infoPanelEl, 'left');
+            clearStyle(infoPanelEl, 'transform');
+            clearStyle(infoPanelEl, 'width');
+            clearStyle(infoPanelEl, 'z-index');
+            clearStyle(infoPanelEl, 'filter');
+            clearStyle(infoPanelEl, 'opacity');
+            clearStyle(infoPanelEl, 'pointer-events');
+        }
+
         function setCinematicMode(isOn) {
             if (!mainContainer || !cinematicBackdrop) {
                 return;
@@ -975,9 +1164,11 @@
             }
 
             if (isOn) {
+                document.body.classList.add('timer-cinematic-active');
                 mainContainer.classList.remove('timer-cinematic-exit');
                 mainContainer.classList.add('timer-cinematic');
                 cinematicBackdrop.classList.add('show');
+                setBackgroundBlur(true);
                 return;
             }
 
@@ -987,6 +1178,8 @@
 
             cinematicExitTimer = setTimeout(() => {
                 mainContainer.classList.remove('timer-cinematic-exit');
+                document.body.classList.remove('timer-cinematic-active');
+                setBackgroundBlur(false);
                 cinematicExitTimer = null;
             }, CINEMATIC_TRANSITION_MS);
         }
