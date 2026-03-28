@@ -236,6 +236,7 @@
         .running .status-icon { transform: scale(1.08); }
         .running .status-text { color: #00e676; }
         .stopped .status-text { color: #ffc107; }
+        .paused .status-text { color: #8fc5ff; }
         .completed .status-text { color: #00d4ff; }
 
         .stat-row {
@@ -285,6 +286,18 @@
             color: #fff;
         }
         .btn-danger:hover { background: #e04040; }
+
+        .btn-secondary {
+            background: #2f426f;
+            color: #fff;
+            margin-bottom: 8px;
+            display: none;
+        }
+        .btn-secondary:hover { background: #3a4f82; }
+
+        .btn-secondary.show {
+            display: block;
+        }
 
 
         .log-list {
@@ -515,6 +528,72 @@
             z-index: 1100;
         }
 
+        .cinematic-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(8, 12, 24, 0.35);
+            backdrop-filter: blur(0px);
+            -webkit-backdrop-filter: blur(0px);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.65s ease, backdrop-filter 0.65s ease, -webkit-backdrop-filter 0.65s ease;
+            z-index: 1250;
+        }
+
+        .cinematic-backdrop.show {
+            opacity: 1;
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+        }
+
+        .timer-dialog {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            transition: transform 0.65s cubic-bezier(0.2, 0.8, 0.2, 1), filter 0.55s ease, opacity 0.55s ease;
+            transform-origin: center center;
+        }
+
+        .video-panel {
+            transition: transform 0.65s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.65s ease, border-color 0.65s ease;
+            transform-origin: center center;
+        }
+
+        .main-container.timer-cinematic .video-column,
+        .main-container.timer-cinematic-exit .video-column {
+            position: relative;
+            z-index: 1305;
+        }
+
+        .main-container.timer-cinematic .timer-dialog,
+        .main-container.timer-cinematic-exit .timer-dialog {
+            position: relative;
+            z-index: 1310;
+        }
+
+        .main-container.timer-cinematic .timer-dialog {
+            transform: scale(1.65);
+        }
+
+        .main-container.timer-cinematic .video-panel {
+            border-color: #5acbff;
+            box-shadow: 0 36px 90px rgba(5, 12, 34, 0.75);
+        }
+
+        .main-container.timer-cinematic .left-column,
+        .main-container.timer-cinematic .info-panel,
+        .main-container.timer-cinematic .video-column > :not(.timer-dialog),
+        .main-container.timer-cinematic-exit .left-column,
+        .main-container.timer-cinematic-exit .info-panel,
+        .main-container.timer-cinematic-exit .video-column > :not(.timer-dialog) {
+            position: relative;
+            z-index: 1200;
+            filter: blur(5px);
+            opacity: 0.3;
+            transition: filter 0.55s ease, opacity 0.55s ease;
+            pointer-events: none;
+        }
+
         .side-menu {
             position: fixed;
             top: 0;
@@ -618,6 +697,20 @@
             .todo-card {
                 margin-top: 10px;
             }
+
+            .main-container.timer-cinematic .timer-dialog {
+                transform: scale(1.06);
+            }
+
+            .main-container.timer-cinematic .left-column,
+            .main-container.timer-cinematic .info-panel,
+            .main-container.timer-cinematic .video-column > :not(.timer-dialog),
+            .main-container.timer-cinematic-exit .left-column,
+            .main-container.timer-cinematic-exit .info-panel,
+            .main-container.timer-cinematic-exit .video-column > :not(.timer-dialog) {
+                filter: blur(3px);
+                opacity: 0.4;
+            }
         }
     </style>
     <link rel="stylesheet" href="interactive-bg.css">
@@ -630,6 +723,7 @@
     </button>
 
     <div id="menuBackdrop" class="menu-backdrop"></div>
+    <div id="cinematicBackdrop" class="cinematic-backdrop"></div>
 
     <aside id="sideMenu" class="side-menu" aria-hidden="true">
         <div class="side-menu-title">Features</div>
@@ -697,15 +791,18 @@
             </div>
 
             <div class="video-column">
-                <div class="video-panel">
-                    <div id="timerScreen" class="timer-screen">
-                        <div class="clock-label">LIVE TIMER</div>
-                        <div class="clock-time" id="liveClock">00:00:00</div>
-                        <div class="clock-remaining" id="screenRemaining">Remaining 25:00</div>
-                        <div class="clock-elapsed" id="screenElapsed">Elapsed 00:00</div>
+                <div class="timer-dialog">
+                    <div class="video-panel">
+                        <div id="timerScreen" class="timer-screen">
+                            <div class="clock-label">LIVE TIMER</div>
+                            <div class="clock-time" id="liveClock">00:00:00</div>
+                            <div class="clock-remaining" id="screenRemaining">Remaining 25:00</div>
+                            <div class="clock-elapsed" id="screenElapsed">Elapsed 00:00</div>
+                        </div>
                     </div>
+                    <button class="btn btn-secondary" id="pauseBtn" onclick="togglePause()" disabled>Pause Timer</button>
+                    <button class="btn btn-primary" id="startBtn" onclick="startTracking()">Start Timer</button>
                 </div>
-                <button class="btn btn-primary" id="startBtn" onclick="startTracking()">Start Timer</button>
 
                 <!-- To-Do -->
                 <div class="card todo-card">
@@ -771,6 +868,7 @@
         const sessionCountEl = document.getElementById('sessionCount');
         const progressFill = document.getElementById('progressFill');
         const logList = document.getElementById('logList');
+        const pauseBtn = document.getElementById('pauseBtn');
         const startBtn = document.getElementById('startBtn');
         const refreshSavedBtn = document.getElementById('refreshSavedBtn');
         const savedTotalSessionsEl = document.getElementById('savedTotalSessions');
@@ -796,20 +894,26 @@
         const openTodoManagerBtn = document.getElementById('openTodoManagerBtn');
         const todoListEl = document.getElementById('todoList');
         const todoEmptyEl = document.getElementById('todoEmpty');
+        const cinematicBackdrop = document.getElementById('cinematicBackdrop');
+        const mainContainer = document.querySelector('.main-container');
 
         // State
         let tracking = false;
+        let isPaused = false;
+        let sessionStartedAt = null;
         let sessionStart = null;
         let sessionElapsedMs = 0;
         let sessionLimitMs = 25 * 60 * 1000;
         let tickTimer = null;
         let liveClockTimer = null;
         let autoSaveTimer = null;
+        let cinematicExitTimer = null;
         let clientSessionId = null;
         let completedSessions = 0;
         let todos = [];
 
         const AUTO_SAVE_MS = 15000;
+        const CINEMATIC_TRANSITION_MS = 700;
 
         function fmtTime(ms) {
             const s = Math.floor(ms / 1000);
@@ -860,6 +964,33 @@
             clearTimerBtn.disabled = isDisabled;
         }
 
+        function setCinematicMode(isOn) {
+            if (!mainContainer || !cinematicBackdrop) {
+                return;
+            }
+
+            if (cinematicExitTimer) {
+                clearTimeout(cinematicExitTimer);
+                cinematicExitTimer = null;
+            }
+
+            if (isOn) {
+                mainContainer.classList.remove('timer-cinematic-exit');
+                mainContainer.classList.add('timer-cinematic');
+                cinematicBackdrop.classList.add('show');
+                return;
+            }
+
+            mainContainer.classList.add('timer-cinematic-exit');
+            mainContainer.classList.remove('timer-cinematic');
+            cinematicBackdrop.classList.remove('show');
+
+            cinematicExitTimer = setTimeout(() => {
+                mainContainer.classList.remove('timer-cinematic-exit');
+                cinematicExitTimer = null;
+            }, CINEMATIC_TRANSITION_MS);
+        }
+
         function addLog(msg, cls) {
             const el = document.createElement('div');
             el.className = `log-item ${cls}`;
@@ -874,7 +1005,7 @@
 
         function updateTimerUI() {
             const now = Date.now();
-            const elapsed = tracking && sessionStart ? Math.max(0, now - sessionStart) : sessionElapsedMs;
+            const elapsed = sessionElapsedMs + (tracking && sessionStart ? Math.max(0, now - sessionStart) : 0);
             const remaining = Math.max(0, sessionLimitMs - elapsed);
             const progress = sessionLimitMs > 0 ? Math.min(100, Math.round((elapsed / sessionLimitMs) * 100)) : 0;
 
@@ -883,7 +1014,13 @@
             progressTextEl.textContent = `${progress}%`;
             progressFill.style.width = `${progress}%`;
             progressFill.style.background = progress >= 100 ? '#00d4ff' : progress > 70 ? '#00e676' : progress > 40 ? '#ffc107' : '#ff5252';
-            timerCountdown.textContent = tracking ? `Remaining: ${fmtCountdown(remaining)}` : 'Not running';
+            if (tracking) {
+                timerCountdown.textContent = `Remaining: ${fmtCountdown(remaining)}`;
+            } else if (isPaused) {
+                timerCountdown.textContent = `Paused: ${fmtCountdown(remaining)} remaining`;
+            } else {
+                timerCountdown.textContent = 'Not running';
+            }
 
             screenRemainingEl.textContent = `Remaining ${fmtCountdown(remaining)}`;
             screenElapsedEl.textContent = `Elapsed ${fmtTime(elapsed)}`;
@@ -941,17 +1078,17 @@
             const isFinal = options.isFinal === true;
             const endedAtMs = Date.now();
 
-            if (!sessionStart || !clientSessionId) {
+            if (!sessionStartedAt || !clientSessionId) {
                 return;
             }
 
-            const sessionMs = tracking ? Math.max(0, endedAtMs - sessionStart) : sessionElapsedMs;
+            const sessionMs = sessionElapsedMs + (tracking && sessionStart ? Math.max(0, endedAtMs - sessionStart) : 0);
             if (sessionMs <= 0) {
                 return;
             }
 
             const payload = {
-                startedAt: new Date(sessionStart).toISOString(),
+                startedAt: new Date(sessionStartedAt).toISOString(),
                 endedAt: new Date(endedAtMs).toISOString(),
                 sessionMs,
                 focusMs: sessionMs,
@@ -982,18 +1119,24 @@
         }
 
         async function startTracking() {
-            if (tracking) {
+            if (tracking || isPaused) {
                 await stopTracking();
                 return;
             }
 
             tracking = true;
-            sessionStart = Date.now();
+            isPaused = false;
+            sessionStartedAt = Date.now();
+            sessionStart = sessionStartedAt;
             sessionElapsedMs = 0;
             clientSessionId = makeClientSessionId();
             setTimerControlsDisabled(true);
 
             setStatus('running', '▶️', 'Running', 'Live timer in progress');
+            setCinematicMode(true);
+            pauseBtn.classList.add('show');
+            pauseBtn.disabled = false;
+            pauseBtn.textContent = 'Pause Timer';
             startBtn.textContent = 'Stop Timer';
             startBtn.className = 'btn btn-danger';
             logList.innerHTML = '';
@@ -1018,14 +1161,71 @@
             updateTimerUI();
         }
 
-        async function stopTracking(options = {}) {
-            const endedByTimer = options.endedByTimer === true;
-            if (!tracking || !sessionStart) {
+        function togglePause() {
+            if (!tracking && !isPaused) {
                 return;
             }
 
-            sessionElapsedMs = Math.max(0, Date.now() - sessionStart);
+            if (tracking) {
+                if (sessionStart) {
+                    sessionElapsedMs += Math.max(0, Date.now() - sessionStart);
+                }
+                tracking = false;
+                isPaused = true;
+                sessionStart = null;
+
+                if (tickTimer) {
+                    clearInterval(tickTimer);
+                    tickTimer = null;
+                }
+                if (autoSaveTimer) {
+                    clearInterval(autoSaveTimer);
+                    autoSaveTimer = null;
+                }
+
+                pauseBtn.textContent = 'Resume Timer';
+                setStatus('paused', '⏸️', 'Paused', 'Session is paused');
+                addLog('Timer paused', 'log-away');
+                updateTimerUI();
+                return;
+            }
+
+            tracking = true;
+            isPaused = false;
+            sessionStart = Date.now();
+
+            if (tickTimer) {
+                clearInterval(tickTimer);
+            }
+            tickTimer = setInterval(updateTimerUI, 250);
+
+            if (autoSaveTimer) {
+                clearInterval(autoSaveTimer);
+            }
+            autoSaveTimer = setInterval(() => {
+                if (tracking) {
+                    saveCurrentSession();
+                }
+            }, AUTO_SAVE_MS);
+
+            pauseBtn.textContent = 'Pause Timer';
+            setStatus('running', '▶️', 'Running', 'Live timer in progress');
+            addLog('Timer resumed', 'log-focused');
+            updateTimerUI();
+        }
+
+        async function stopTracking(options = {}) {
+            const endedByTimer = options.endedByTimer === true;
+            if (!tracking && !isPaused) {
+                return;
+            }
+
+            if (tracking && sessionStart) {
+                sessionElapsedMs += Math.max(0, Date.now() - sessionStart);
+            }
             tracking = false;
+            isPaused = false;
+            sessionStart = null;
 
             if (tickTimer) {
                 clearInterval(tickTimer);
@@ -1047,8 +1247,13 @@
             } else {
                 addLog('Timer stopped', 'log-away');
                 setStatus('stopped', '⏸️', 'Stopped', 'Press Start Timer to begin a new session');
+                sessionElapsedMs = 0;
             }
 
+            pauseBtn.disabled = true;
+            pauseBtn.textContent = 'Pause Timer';
+            pauseBtn.classList.remove('show');
+            setCinematicMode(false);
             startBtn.textContent = 'Start Timer';
             startBtn.className = 'btn btn-primary';
             setTimerControlsDisabled(false);
