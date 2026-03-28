@@ -34,6 +34,15 @@
     const pointer = { x: targetX, y: targetY, active: false };
     const trail = Array.from({ length: 28 }, () => ({ x: targetX, y: targetY }));
 
+    const startupTargets = document.querySelectorAll(
+        '.card, .timer-card, .video-panel, .info-panel, .todo-card, .modal-content, .stat, .holiday-item, .day-cell, .tracking-area, .left-column, .video-column, .container > h1, .container > .subtitle, h1, .subtitle'
+    );
+    startupTargets.forEach((node, index) => {
+        node.classList.add('startup-fade');
+        const delayMs = Math.min(70 + (index * 45), 640);
+        node.style.setProperty('--startup-delay', `${delayMs}ms`);
+    });
+
     const particles = Array.from({ length: prefersReducedMotion ? 18 : 56 }, () => ({
         x: Math.random(),
         y: Math.random(),
@@ -181,6 +190,9 @@
     }
 
     resize();
+    window.requestAnimationFrame(() => {
+        body.classList.add('app-start-ready');
+    });
     window.addEventListener('resize', resize);
     window.addEventListener('pointermove', onPointerMove, { passive: true });
     window.addEventListener('pointerleave', onPointerLeave);
