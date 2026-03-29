@@ -10,6 +10,36 @@ from urllib import request as urlrequest
 import azure.functions as func
 
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
+
+# ============================================================================
+# DATABASE CONFIGURATION
+# ============================================================================
+# IMPORTANT FOR AZURE SWA DEPLOYMENT:
+# Azure Static Web Apps /api folder is READ-ONLY. Do NOT use local files.
+#
+# LOCAL DEVELOPMENT (default):
+# - Uses SQLite (database.db) - NOT pushed to Azure
+#
+# AZURE DEPLOYMENT:
+# - MUST use a cloud database: Supabase, Azure SQL, or Azure Cosmos DB
+# - Set DATABASE_URL environment variable with connection string
+# - Examples:
+#   - Supabase: "postgresql://user:password@host/dbname"
+#   - Azure SQL: "mssql+pyodbc://user:password@server.database.windows.net/dbname?driver=ODBC+Driver+17+for+SQL+Server"
+#
+# To migrate to Supabase PostgreSQL:
+# 1. Create Supabase project at https://supabase.com
+# 2. Set DATABASE_URL in Azure SWA environment variables
+# 3. Uncomment postgres support in requirements.txt
+# ============================================================================
+
+DB_TYPE = os.getenv("DATABASE_TYPE", "sqlite").lower()
+
+if DB_TYPE != "sqlite":
+    # This would be used for cloud databases (PostgreSQL, SQL Server, etc.)
+    # For now, we keep SQLite as default
+    pass
+
 DB_PATH = os.path.join(BASE_DIR, "database.db")
 
 

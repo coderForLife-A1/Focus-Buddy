@@ -2,3 +2,22 @@ azure-functions
 requests
 openai
 msal
+
+# ========================
+# Cloud Database Support
+# ========================
+# For Azure SWA deployment, use a cloud database (not local SQLite)
+# Uncomment ONE of the following based on your choice:
+#
+# PostgreSQL / Supabase:
+# psycopg2-binary==2.9.9
+# SQLAlchemy==2.0.23
+#
+# Azure SQL / SQL Server:
+# pyodbc==5.0.1
+# SQLAlchemy==2.0.23
+#
+# Azure Cosmos DB:
+# azure-cosmos==4.5.1
+#
+# For local development, SQLite is used (built-in, no package needed)
