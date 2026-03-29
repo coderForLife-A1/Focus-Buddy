@@ -1,0 +1,4 @@
+azure-functions
+requests
+openai
+msal

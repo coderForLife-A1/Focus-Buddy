@@ -1,0 +1,38 @@
+{
+  "routes": [
+    {
+      "route": "/",
+      "rewrite": "/index.html"
+    },
+    {
+      "route": "/history",
+      "rewrite": "/history.html"
+    },
+    {
+      "route": "/todo",
+      "rewrite": "/todo.html"
+    },
+    {
+      "route": "/calendar",
+      "rewrite": "/calendar.html"
+    },
+    {
+      "route": "/ai-summarizer",
+      "rewrite": "/ai_summarizer.html"
+    }
+  ],
+  "navigationFallback": {
+    "rewrite": "/index.html",
+    "exclude": [
+      "/api/*",
+      "/*.css",
+      "/*.js",
+      "/*.png",
+      "/*.jpg",
+      "/*.jpeg",
+      "/*.svg",
+      "/*.ico",
+      "/*.json"
+    ]
+  }
+}

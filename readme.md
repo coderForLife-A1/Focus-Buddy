@@ -1,39 +1,97 @@
-# Focus Timer
+# FocusBuddy
 
-This project is a Flask-based productivity app centered on a live timer screen.
+FocusBuddy is a productivity web app built for Azure Static Web Apps.
+
+The project is split into:
+- frontend: static HTML, CSS, and JavaScript pages
+- api: serverless Python backend using Azure Functions
+
+## Project Structure
+
+```
+FocusBuddy/
+├── frontend/
+│   ├── index.html
+│   ├── todo.html
+│   ├── history.html
+│   ├── calendar.html
+│   ├── ai_summarizer.html
+│   ├── interactive-bg.css
+│   └── interactive-bg.js
+├── api/
+│   ├── focus_api/
+│   │   ├── __init__.py
+│   │   └── function.json
+│   ├── host.json
+│   ├── requirements.txt
+│   ├── ai_config.py
+│   ├── ai_config_local.py
+│   └── database.db
+├── .gitignore
+├── LICENSE
+└── readme.md
+```
 
 ## Features
 
-- Live timer screen with current clock, elapsed time, and remaining time.
-- Configurable session duration (minutes and seconds).
-- Start and stop timer controls with automatic session completion at time limit.
-- Session stats and history saved to SQLite.
-- To-do manager, history view, calendar view, and AI summarizer pages.
-- Ai summarizer that uses ai to summarize the provided text/document.
+- Live timer screen with session tracking
+- Focus history and summary analytics
+- To-do manager with due dates
+- Calendar view with holiday overlays
+- AI summarizer with provider auto-detection and local fallback
 
-## Tech Stack
+## Backend API Routes
 
-- Backend: Flask
-- Storage: SQLite
-- Frontend: HTML, CSS, vanilla JavaScript
+All routes are served from Azure Functions under the /api prefix:
 
-## Run Locally
+- GET /api/ai-config
+- POST /api/ai-summarize
+- GET /api/focus-sessions
+- POST /api/focus-sessions
+- DELETE /api/focus-sessions
+- GET /api/todos
+- POST /api/todos
+- PATCH /api/todos/{id}
+- DELETE /api/todos/{id}
 
-1. Open a terminal in this project folder.
-2. Install Flask (if needed):
+## Local Development
+
+Prerequisites:
+- Python 3.10+
+- Azure Functions Core Tools v4
+
+1. Install backend dependencies:
 
 ```bash
-pip install flask
+cd api
+pip install -r requirements.txt
 ```
 
-3. Start the app:
+2. Run the Azure Function API locally:
 
 ```bash
-python app.py
+func start
 ```
 
-4. Open your browser and visit:
+3. Serve frontend files from the frontend folder (for example):
+
+```bash
+cd ../frontend
+python -m http.server 5500
+```
+
+4. Open the frontend:
 
 ```text
-http://127.0.0.1:5000/
+http://localhost:5500/index.html
 ```
+
+The frontend calls the API at /api/* when hosted in Azure Static Web Apps.
+
+## Azure Static Web Apps Deployment Notes
+
+- App location: frontend
+- Api location: api
+- Output location: leave empty for static HTML projects
+
+You can deploy by connecting this repository to Azure Static Web Apps and using the default SWA build workflow.
