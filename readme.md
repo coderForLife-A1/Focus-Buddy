@@ -9,6 +9,7 @@ This project is a Flask-based productivity app centered on a live timer screen.
 - Start and stop timer controls with automatic session completion at time limit.
 - Session stats and history saved to SQLite.
 - To-do manager, history view, calendar view, and AI summarizer pages.
+- Ai summarizer that uses ai to summarize the provided text/document.
 
 ## Tech Stack
 
