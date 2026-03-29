@@ -87,11 +87,3 @@ http://localhost:5500/index.html
 ```
 
 The frontend calls the API at /api/* when hosted in Azure Static Web Apps.
-
-## Azure Static Web Apps Deployment Notes
-
-- App location: frontend
-- Api location: api
-- Output location: leave empty for static HTML projects
-
-You can deploy by connecting this repository to Azure Static Web Apps and using the default SWA build workflow.
