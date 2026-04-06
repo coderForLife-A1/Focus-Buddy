@@ -1,15 +1,25 @@
 # FocusBuddy
 
-FocusBuddy is a productivity web app built for Azure Static Web Apps.
+FocusBuddy is a productivity web app with a static frontend and a Python Flask backend.
 
-The project is split into:
-- frontend: static HTML, CSS, and JavaScript pages
-- api: serverless Python backend using Azure Functions
+## Current Stack
+
+- Frontend: Static HTML/CSS/JavaScript in `frontend/`
+- Backend: Flask app in `api/index.py`
+- Database: Supabase (Postgres)
+- Deployment routing: `vercel.json` rewrites `/api/*` to `api/index.py`
 
 ## Project Structure
 
 ```
-FocusBuddy/
+Focus Buddy/
+├── api/
+│   ├── .env
+│   ├── ai_config.py
+│   ├── ai_config_local.py
+│   ├── index.py
+│   ├── requirements.txt
+│   └── schema.sql
 ├── frontend/
 │   ├── index.html
 │   ├── todo.html
@@ -18,47 +28,66 @@ FocusBuddy/
 │   ├── ai_summarizer.html
 │   ├── interactive-bg.css
 │   └── interactive-bg.js
-├── api/
-│   ├── focus_api/
-│   │   ├── __init__.py
-│   │   └── function.json
-│   ├── host.json
-│   ├── requirements.txt
-│   ├── ai_config.py
-│   ├── ai_config_local.py
-│   └── database.db
-├── .gitignore
+├── vercel.json
 ├── LICENSE
 └── readme.md
 ```
 
 ## Features
 
-- Live timer screen with session tracking
-- Focus history and summary analytics
-- To-do manager with due dates
-- Calendar view with holiday overlays
-- AI summarizer with provider auto-detection and local fallback
+- Focus timer and focus session tracking
+- Focus history analytics
+- Todo management with due dates
+- Calendar view
+- AI summarizer with provider inference and local fallback
 
-## Backend API Routes
+## API Routes
 
-All routes are served from Azure Functions under the /api prefix:
+All backend routes are exposed under `/api`:
 
-- GET /api/ai-config
-- POST /api/ai-summarize
-- GET /api/focus-sessions
-- POST /api/focus-sessions
-- DELETE /api/focus-sessions
-- GET /api/todos
-- POST /api/todos
-- PATCH /api/todos/{id}
-- DELETE /api/todos/{id}
+- OPTIONS `/api/<path>`
+- GET `/api/health`
+- GET `/api/ai-config`
+- GET `/api/graph-auth`
+- POST `/api/ai-summarize`
+- GET `/api/focus-sessions`
+- POST `/api/focus-sessions`
+- DELETE `/api/focus-sessions`
+- GET `/api/todos`
+- POST `/api/todos`
+- PATCH `/api/todos/{id}`
+- DELETE `/api/todos/{id}`
+- GET `/api/tasks` (alias of todos)
+- POST `/api/tasks` (alias of todos)
+- PATCH `/api/tasks/{id}` (alias of todos)
+- DELETE `/api/tasks/{id}` (alias of todos)
+
+## Environment Variables
+
+Create `api/.env` with:
+
+```env
+SUPABASE_URL=your_supabase_url
+SUPABASE_SERVICE_ROLE_KEY=your_legacy_jwt_service_role_key
+```
+
+Optional variables:
+
+- `AI_API_KEY` or `OPENROUTER_API_KEY`
+- `AI_PROVIDER` (`openai`, `openrouter`, `gemini`, `claude`)
+- `GRAPH_TENANT_ID`, `GRAPH_CLIENT_ID`, `GRAPH_CLIENT_SECRET`, `GRAPH_SCOPES`
+- `PORT` (default `5000`)
+
+Note: with the current dependency versions, use a JWT-style Supabase key for backend auth.
+
+## Database Setup
+
+Run the SQL in `api/schema.sql` once in Supabase SQL Editor to create required tables:
+
+- `public.focus_sessions`
+- `public.todos`
 
 ## Local Development
-
-Prerequisites:
-- Python 3.10+
-- Azure Functions Core Tools v4
 
 1. Install backend dependencies:
 
@@ -67,23 +96,48 @@ cd api
 pip install -r requirements.txt
 ```
 
-2. Run the Azure Function API locally:
+2. Start backend API:
 
 ```bash
-func start
+python index.py
 ```
 
-3. Serve frontend files from the frontend folder (for example):
+3. Serve frontend:
 
 ```bash
 cd ../frontend
 python -m http.server 5500
 ```
 
-4. Open the frontend:
+4. Open app:
 
 ```text
 http://localhost:5500/index.html
 ```
 
-The frontend calls the API at /api/* when hosted in Azure Static Web Apps.
+If frontend and backend run on different origins locally, ensure requests target the backend URL (for example `http://127.0.0.1:5000/api/...`).
+
+## Troubleshooting
+
+- Invalid Supabase key on startup (`Invalid API key`):
+	Use a JWT-style legacy `service_role` key in `SUPABASE_SERVICE_ROLE_KEY` (usually starts with `eyJ` and has three dot-separated parts).
+
+- Tables not found (`PGRST205` for `public.todos` or `public.focus_sessions`):
+	Run `api/schema.sql` in Supabase SQL Editor, then retry the API calls.
+
+- API health check:
+
+```bash
+curl http://127.0.0.1:5000/api/health
+```
+
+Expected: `{"ok": true, "supabaseConfigured": true, ...}`
+
+- Database route checks:
+
+```bash
+curl http://127.0.0.1:5000/api/todos
+curl http://127.0.0.1:5000/api/focus-sessions
+```
+
+If both routes return JSON (not 500 errors), database connectivity and schema are configured correctly.
