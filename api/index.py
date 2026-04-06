@@ -2,6 +2,7 @@ import json
 import os
 import re
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 from urllib import error as urlerror
 from urllib import request as urlrequest
@@ -12,23 +13,36 @@ from flask import Flask, jsonify, request
 from supabase import Client, create_client
 
 load_dotenv()
+load_dotenv(Path(__file__).resolve().parent / ".env")
 
 app = Flask(__name__)
 
 
 def _initialize_supabase_client() -> Client:
     supabase_url = (os.environ.get("SUPABASE_URL") or "").strip()
-    supabase_key = (os.environ.get("SUPABASE_KEY") or "").strip()
+    supabase_key = (
+        (os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or "").strip()
+        or (os.environ.get("SUPABASE_KEY") or "").strip()
+        or (os.environ.get("SUPABASE_ANON_KEY") or "").strip()
+    )
 
     missing_vars = []
     if not supabase_url:
         missing_vars.append("SUPABASE_URL")
     if not supabase_key:
-        missing_vars.append("SUPABASE_KEY")
+        missing_vars.append("SUPABASE_SERVICE_ROLE_KEY or SUPABASE_KEY")
 
     if missing_vars:
         raise RuntimeError(
             f"Missing required environment variables for Supabase: {', '.join(missing_vars)}"
+        )
+
+    # The Python Supabase client expects JWT-style keys (anon/service_role),
+    # not sb_publishable_* browser keys.
+    if supabase_key.startswith("sb_publishable_"):
+        raise RuntimeError(
+            "Invalid Supabase key for backend: got sb_publishable_* key. "
+            "Set SUPABASE_SERVICE_ROLE_KEY (recommended) or SUPABASE_ANON_KEY/SUPABASE_KEY with a JWT-style key from Supabase project settings."
         )
 
     try:
