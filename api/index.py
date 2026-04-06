@@ -7,13 +7,37 @@ from urllib import error as urlerror
 from urllib import request as urlrequest
 
 import msal
+from dotenv import load_dotenv
 from flask import Flask, jsonify, request
 from supabase import Client, create_client
 
+load_dotenv()
+
 app = Flask(__name__)
 
-_supabase_client: Optional[Client] = None
-_supabase_error: Optional[str] = None
+
+def _initialize_supabase_client() -> Client:
+    supabase_url = (os.environ.get("SUPABASE_URL") or "").strip()
+    supabase_key = (os.environ.get("SUPABASE_KEY") or "").strip()
+
+    missing_vars = []
+    if not supabase_url:
+        missing_vars.append("SUPABASE_URL")
+    if not supabase_key:
+        missing_vars.append("SUPABASE_KEY")
+
+    if missing_vars:
+        raise RuntimeError(
+            f"Missing required environment variables for Supabase: {', '.join(missing_vars)}"
+        )
+
+    try:
+        return create_client(supabase_url, supabase_key)
+    except Exception as exc:
+        raise RuntimeError(f"Failed to initialize Supabase client: {exc}") from exc
+
+
+_supabase_client: Client = _initialize_supabase_client()
 
 
 def _utc_now_iso() -> str:
@@ -313,35 +337,8 @@ def _ai_summarize_with_claude(api_key: str, text: str, ratio_percent: float) -> 
     raise ValueError("Claude model resolution failed")
 
 
-def _get_supabase_client() -> Tuple[Optional[Client], Optional[str]]:
-    global _supabase_client
-    global _supabase_error
-
-    if _supabase_client is not None:
-        return _supabase_client, None
-
-    if _supabase_error is not None:
-        return None, _supabase_error
-
-    supabase_url = os.getenv("SUPABASE_URL", "").strip()
-    supabase_key = os.getenv("SUPABASE_KEY", "").strip()
-
-    missing_vars = []
-    if not supabase_url:
-        missing_vars.append("SUPABASE_URL")
-    if not supabase_key:
-        missing_vars.append("SUPABASE_KEY")
-
-    if missing_vars:
-        _supabase_error = f"Missing required environment variables: {', '.join(missing_vars)}"
-        return None, _supabase_error
-
-    try:
-        _supabase_client = create_client(supabase_url, supabase_key)
-        return _supabase_client, None
-    except Exception as exc:
-        _supabase_error = f"Failed to initialize Supabase client: {exc}"
-        return None, _supabase_error
+def _get_supabase_client() -> Client:
+    return _supabase_client
 
 
 def _serialize_todo(row: Dict[str, Any]) -> Dict[str, Any]:
@@ -529,11 +526,7 @@ def ai_summarize():
 
 @app.route("/api/focus-sessions", methods=["POST"])
 def create_focus_session():
-    supabase, supabase_error = _get_supabase_client()
-    if supabase_error:
-        return _json_error("Supabase is not configured", 500, {"reason": supabase_error})
-    if supabase is None:
-        return _json_error("Supabase client unavailable", 500)
+    supabase = _get_supabase_client()
 
     payload = _read_json()
     required = ["startedAt", "endedAt", "sessionMs", "focusMs", "focusRate", "distractionCount"]
@@ -600,11 +593,7 @@ def create_focus_session():
 
 @app.route("/api/focus-sessions", methods=["GET"])
 def list_focus_sessions():
-    supabase, supabase_error = _get_supabase_client()
-    if supabase_error:
-        return _json_error("Supabase is not configured", 500, {"reason": supabase_error})
-    if supabase is None:
-        return _json_error("Supabase client unavailable", 500)
+    supabase = _get_supabase_client()
 
     from_date = (request.args.get("from") or "").strip()
     to_date = (request.args.get("to") or "").strip()
@@ -642,11 +631,7 @@ def list_focus_sessions():
 
 @app.route("/api/focus-sessions", methods=["DELETE"])
 def delete_focus_sessions():
-    supabase, supabase_error = _get_supabase_client()
-    if supabase_error:
-        return _json_error("Supabase is not configured", 500, {"reason": supabase_error})
-    if supabase is None:
-        return _json_error("Supabase client unavailable", 500)
+    supabase = _get_supabase_client()
 
     try:
         supabase.table("focus_sessions").delete().gt("id", -1).execute()
@@ -657,11 +642,7 @@ def delete_focus_sessions():
 
 @app.route("/api/todos", methods=["GET"])
 def list_todos():
-    supabase, supabase_error = _get_supabase_client()
-    if supabase_error:
-        return _json_error("Supabase is not configured", 500, {"reason": supabase_error})
-    if supabase is None:
-        return _json_error("Supabase client unavailable", 500)
+    supabase = _get_supabase_client()
 
     try:
         result = supabase.table("todos").select("*").order("is_done").order("id", desc=True).execute()
@@ -674,11 +655,7 @@ def list_todos():
 
 @app.route("/api/todos", methods=["POST"])
 def create_todo():
-    supabase, supabase_error = _get_supabase_client()
-    if supabase_error:
-        return _json_error("Supabase is not configured", 500, {"reason": supabase_error})
-    if supabase is None:
-        return _json_error("Supabase client unavailable", 500)
+    supabase = _get_supabase_client()
 
     payload = _read_json()
     title = str(payload.get("title", "")).strip()
@@ -721,11 +698,7 @@ def create_todo():
 
 @app.route("/api/todos/<int:todo_id>", methods=["PATCH"])
 def update_todo(todo_id: int):
-    supabase, supabase_error = _get_supabase_client()
-    if supabase_error:
-        return _json_error("Supabase is not configured", 500, {"reason": supabase_error})
-    if supabase is None:
-        return _json_error("Supabase client unavailable", 500)
+    supabase = _get_supabase_client()
 
     payload = _read_json()
     if "title" not in payload and "isDone" not in payload and "dueDate" not in payload:
@@ -779,11 +752,7 @@ def update_todo(todo_id: int):
 
 @app.route("/api/todos/<int:todo_id>", methods=["DELETE"])
 def delete_todo(todo_id: int):
-    supabase, supabase_error = _get_supabase_client()
-    if supabase_error:
-        return _json_error("Supabase is not configured", 500, {"reason": supabase_error})
-    if supabase is None:
-        return _json_error("Supabase client unavailable", 500)
+    supabase = _get_supabase_client()
 
     try:
         existing_result = supabase.table("todos").select("id").eq("id", todo_id).limit(1).execute()
@@ -814,13 +783,12 @@ def tasks_alias_item(todo_id: int):
 
 @app.route("/api/health", methods=["GET"])
 def health():
-    _, supabase_error = _get_supabase_client()
     graph_token, graph_error = _acquire_graph_token()
 
     return jsonify(
         {
             "ok": True,
-            "supabaseConfigured": supabase_error is None,
+            "supabaseConfigured": True,
             "graphConfigured": graph_error is None,
             "graphAuthReady": graph_token is not None,
             "provider": _infer_ai_provider(_get_ai_api_key()) if _get_ai_api_key() else None,
