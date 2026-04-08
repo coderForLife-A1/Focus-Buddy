@@ -51,7 +51,25 @@ def _initialize_supabase_client() -> Client:
         raise RuntimeError(f"Failed to initialize Supabase client: {exc}") from exc
 
 
-_supabase_client: Client = _initialize_supabase_client()
+_supabase_client: Optional[Client] = None
+_supabase_init_error: Optional[str] = None
+
+
+def _ensure_supabase_client() -> Client:
+    global _supabase_client, _supabase_init_error
+
+    if _supabase_client is not None:
+        return _supabase_client
+
+    if _supabase_init_error is not None:
+        raise RuntimeError(_supabase_init_error)
+
+    try:
+        _supabase_client = _initialize_supabase_client()
+        return _supabase_client
+    except Exception as exc:
+        _supabase_init_error = str(exc)
+        raise
 
 
 def _utc_now_iso() -> str:
@@ -352,7 +370,7 @@ def _ai_summarize_with_claude(api_key: str, text: str, ratio_percent: float) -> 
 
 
 def _get_supabase_client() -> Client:
-    return _supabase_client
+    return _ensure_supabase_client()
 
 
 def _serialize_todo(row: Dict[str, Any]) -> Dict[str, Any]:

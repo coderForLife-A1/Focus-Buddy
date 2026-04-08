@@ -415,6 +415,14 @@
         const calendarGrid = document.getElementById('calendarGrid');
         const holidayListEl = document.getElementById('holidayList');
         const holidayEmptyEl = document.getElementById('holidayEmpty');
+        const API_BASE = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+            && window.location.port === '5500'
+            ? 'http://127.0.0.1:5000'
+            : '';
+
+        function apiUrl(path) {
+            return `${API_BASE}${path}`;
+        }
         const HOLIDAY_COUNTRY = 'IN';
 
         const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -489,7 +497,7 @@
         }
 
         async function loadTodos() {
-            const response = await fetch('/api/todos');
+            const response = await fetch(apiUrl('/api/todos'));
             if (!response.ok) {
                 throw new Error('Failed to load to-do tasks');
             }

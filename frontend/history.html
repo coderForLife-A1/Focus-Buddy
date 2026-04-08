@@ -474,6 +474,14 @@
         const sumRateEl = document.getElementById('sumRate');
         const sumFocusEl = document.getElementById('sumFocus');
         const sumDistractionsEl = document.getElementById('sumDistractions');
+        const API_BASE = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+            && window.location.port === '5500'
+            ? 'http://127.0.0.1:5000'
+            : '';
+
+        function apiUrl(path) {
+            return `${API_BASE}${path}`;
+        }
 
         function setMenuOpen(isOpen) {
             document.body.classList.toggle('menu-open', isOpen);
@@ -536,9 +544,16 @@
 
         async function loadHistory() {
             try {
-                const response = await fetch(`/api/focus-sessions${queryForFilters()}`);
+                const response = await fetch(apiUrl(`/api/focus-sessions${queryForFilters()}`));
                 if (!response.ok) {
-                    throw new Error('Could not load history');
+                    let backendMessage = '';
+                    try {
+                        const errorPayload = await response.json();
+                        backendMessage = errorPayload?.details?.reason || errorPayload?.error || '';
+                    } catch (_parseError) {
+                        backendMessage = '';
+                    }
+                    throw new Error(backendMessage ? `Could not load history: ${backendMessage}` : 'Could not load history');
                 }
 
                 const data = await response.json();
@@ -575,7 +590,9 @@
             } catch (error) {
                 console.error(error);
                 emptyStateEl.style.display = 'block';
-                emptyStateEl.textContent = 'Unable to load session history right now.';
+                emptyStateEl.textContent = error instanceof Error && error.message
+                    ? error.message
+                    : 'Unable to load session history right now.';
                 tableEl.style.display = 'none';
             }
         }
@@ -624,12 +641,19 @@
 
         confirmDeleteBtn.addEventListener('click', async () => {
             try {
-                const response = await fetch('/api/focus-sessions', {
+                const response = await fetch(apiUrl('/api/focus-sessions'), {
                     method: 'DELETE'
                 });
 
                 if (!response.ok) {
-                    throw new Error('Failed to delete history');
+                    let backendMessage = '';
+                    try {
+                        const errorPayload = await response.json();
+                        backendMessage = errorPayload?.details?.reason || errorPayload?.error || '';
+                    } catch (_parseError) {
+                        backendMessage = '';
+                    }
+                    throw new Error(backendMessage ? `Failed to delete history: ${backendMessage}` : 'Failed to delete history');
                 }
 
                 confirmModal.style.display = 'none';
@@ -642,7 +666,7 @@
                 alert('All focus session history has been deleted successfully.');
             } catch (error) {
                 console.error(error);
-                alert('Error deleting history. Please try again.');
+                alert(error instanceof Error && error.message ? error.message : 'Error deleting history. Please try again.');
             }
         });
 
