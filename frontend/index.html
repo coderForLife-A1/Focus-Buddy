@@ -1027,6 +1027,14 @@
 
         const AUTO_SAVE_MS = 15000;
         const CINEMATIC_TRANSITION_MS = 700;
+        const API_BASE = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+            && window.location.port === '5500'
+            ? 'http://127.0.0.1:5000'
+            : '';
+
+        function apiUrl(path) {
+            return `${API_BASE}${path}`;
+        }
 
         function fmtTime(ms) {
             const s = Math.floor(ms / 1000);
@@ -1291,7 +1299,7 @@
             };
 
             try {
-                const response = await fetch('/api/focus-sessions', {
+                const response = await fetch(apiUrl('/api/focus-sessions'), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload),
@@ -1484,7 +1492,7 @@
 
         async function loadTodos() {
             try {
-                const response = await fetch('/api/todos');
+                const response = await fetch(apiUrl('/api/todos'));
                 if (!response.ok) {
                     throw new Error('Failed to load todos');
                 }
@@ -1520,7 +1528,7 @@
 
         async function loadSavedStats() {
             try {
-                const response = await fetch('/api/focus-sessions');
+                const response = await fetch(apiUrl('/api/focus-sessions'));
                 if (!response.ok) {
                     throw new Error('Failed to load saved stats');
                 }

@@ -384,6 +384,14 @@
         const doneCountEl = document.getElementById('doneCount');
         const menuToggle = document.getElementById('menuToggle');
         const sideMenu = document.getElementById('sideMenu');
+        const API_BASE = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+            && window.location.port === '5500'
+            ? 'http://127.0.0.1:5000'
+            : '';
+
+        function apiUrl(path) {
+            return `${API_BASE}${path}`;
+        }
         const menuBackdrop = document.getElementById('menuBackdrop');
         const menuTrackerBtn = document.getElementById('menuTrackerBtn');
         const menuHistoryBtn = document.getElementById('menuHistoryBtn');
@@ -476,7 +484,7 @@
 
         async function loadTodos() {
             try {
-                const response = await fetch('/api/todos');
+                const response = await fetch(apiUrl('/api/todos'));
                 if (!response.ok) throw new Error('Failed to load todos');
                 const data = await response.json();
                 todos = data.todos || [];
@@ -495,7 +503,7 @@
 
             addTodoBtn.disabled = true;
             try {
-                const response = await fetch('/api/todos', {
+                const response = await fetch(apiUrl('/api/todos'), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ title, dueDate: dueDate || null })
@@ -513,7 +521,7 @@
 
         async function setTodoDone(todoId, isDone) {
             try {
-                const response = await fetch(`/api/todos/${todoId}`, {
+                const response = await fetch(apiUrl(`/api/todos/${todoId}`), {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ isDone })
@@ -539,7 +547,7 @@
             }
 
             try {
-                const response = await fetch(`/api/todos/${todoId}`, {
+                const response = await fetch(apiUrl(`/api/todos/${todoId}`), {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ title })
@@ -553,7 +561,7 @@
 
         async function removeTodo(todoId) {
             try {
-                const response = await fetch(`/api/todos/${todoId}`, {
+                const response = await fetch(apiUrl(`/api/todos/${todoId}`), {
                     method: 'DELETE'
                 });
                 if (!response.ok) throw new Error('Failed to delete todo');

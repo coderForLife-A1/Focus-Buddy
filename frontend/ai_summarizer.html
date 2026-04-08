@@ -334,6 +334,14 @@
         const sourceSentenceCountEl = document.getElementById('sourceSentenceCount');
         const summarySentenceCountEl = document.getElementById('summarySentenceCount');
         const sourceWordCountEl = document.getElementById('sourceWordCount');
+        const API_BASE = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+            && window.location.port === '5500'
+            ? 'http://127.0.0.1:5000'
+            : '';
+
+        function apiUrl(path) {
+            return `${API_BASE}${path}`;
+        }
         const lengthRange = document.getElementById('lengthRange');
         const lengthLabel = document.getElementById('lengthLabel');
 
@@ -501,7 +509,7 @@
                 }
 
                 const ratio = Number(lengthRange.value);
-                const response = await fetch('/api/ai-summarize', {
+                const response = await fetch(apiUrl('/api/ai-summarize'), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ text: sourceText, ratioPercent: ratio })
