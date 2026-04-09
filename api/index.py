@@ -134,17 +134,11 @@ def _build_local_summary_response(local_summary: Dict[str, Any], warning: str, a
 
 def _infer_ai_provider(api_key: str) -> str:
     configured_provider = os.getenv("AI_PROVIDER", "").strip().lower()
-    if configured_provider in ("openai", "openrouter", "gemini", "claude"):
+    if configured_provider == "openrouter":
         return configured_provider
 
     if api_key.startswith("sk-or-v1-"):
         return "openrouter"
-    if api_key.startswith("AIza"):
-        return "gemini"
-    if api_key.startswith("sk-ant-"):
-        return "claude"
-    if api_key.startswith("sk-"):
-        return "openai"
 
     return "openrouter"
 
@@ -161,212 +155,69 @@ def _get_ai_api_key() -> str:
     return ""
 
 
-def _ai_summarize_with_openai(api_key: str, text: str, ratio_percent: float) -> str:
-    sentences = _split_sentences(text)
-    sentence_goal = max(1, min(12, round((ratio_percent / 100.0) * max(1, len(sentences)))))
-
-    payload = {
-        "model": "gpt-4o-mini",
-        "temperature": 0.2,
-        "messages": [
-            {
-                "role": "system",
-                "content": "You are a concise summarizer. Return only the final summary text without headings.",
-            },
-            {
-                "role": "user",
-                "content": (
-                    f"Summarize the following content in about {sentence_goal} sentences. "
-                    f"Keep the most important points and keep it factual.\\n\\n{text}"
-                ),
-            },
-        ],
-    }
-
-    req = urlrequest.Request(
-        "https://api.openai.com/v1/chat/completions",
-        data=json.dumps(payload).encode("utf-8"),
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}",
-        },
-        method="POST",
-    )
-
-    with urlrequest.urlopen(req, timeout=60) as response:
-        parsed = json.loads(response.read().decode("utf-8"))
-        choices = parsed.get("choices") or []
-        if not choices:
-            raise ValueError("No choices returned by AI provider")
-        message = choices[0].get("message") or {}
-        summary = str(message.get("content") or "").strip()
-        if not summary:
-            raise ValueError("Empty summary returned by AI provider")
-        return summary
-
-
 def _ai_summarize_with_openrouter(api_key: str, text: str, ratio_percent: float) -> str:
     sentences = _split_sentences(text)
     sentence_goal = max(1, min(12, round((ratio_percent / 100.0) * max(1, len(sentences)))))
 
-    payload = {
-        "model": "openai/gpt-4o-mini",
-        "temperature": 0.2,
-        "messages": [
-            {
-                "role": "system",
-                "content": "You are a concise summarizer. Return only the final summary text without headings.",
-            },
-            {
-                "role": "user",
-                "content": (
-                    f"Summarize the following content in about {sentence_goal} sentences. "
-                    f"Keep the most important points and keep it factual.\\n\\n{text}"
-                ),
-            },
-        ],
-    }
+    fallback_models = [
+        "qwen/qwen3.6-plus:free",
+        "meta-llama/llama-3.1-8b-instruct:free",
+        "openrouter/free",
+    ]
+    last_error = None
 
-    req = urlrequest.Request(
-        "https://openrouter.ai/api/v1/chat/completions",
-        data=json.dumps(payload).encode("utf-8"),
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}",
-        },
-        method="POST",
-    )
-
-    with urlrequest.urlopen(req, timeout=60) as response:
-        parsed = json.loads(response.read().decode("utf-8"))
-        choices = parsed.get("choices") or []
-        if not choices:
-            raise ValueError("No choices returned by AI provider")
-        message = choices[0].get("message") or {}
-        summary = str(message.get("content") or "").strip()
-        if not summary:
-            raise ValueError("Empty summary returned by AI provider")
-        return summary
-
-
-def _ai_summarize_with_gemini(api_key: str, text: str, ratio_percent: float) -> str:
-    sentences = _split_sentences(text)
-    sentence_goal = max(1, min(12, round((ratio_percent / 100.0) * max(1, len(sentences)))))
-
-    payload = {
-        "contents": [
-            {
-                "parts": [
-                    {
-                        "text": (
-                            f"Summarize the following content in about {sentence_goal} sentences. "
-                            "Keep the most important points and keep it factual. "
-                            "Return only the final summary text without headings.\\n\\n"
-                            f"{text}"
-                        )
-                    }
-                ]
-            }
-        ],
-        "generationConfig": {"temperature": 0.2},
-    }
-
-    request_data = json.dumps(payload).encode("utf-8")
-    model_candidates = ["gemini-1.5-flash-latest", "gemini-1.5-flash", "gemini-2.0-flash"]
-    last_http_error = None
-
-    for model_name in model_candidates:
-        req = urlrequest.Request(
-            f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}",
-            data=request_data,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-
-        try:
-            with urlrequest.urlopen(req, timeout=60) as response:
-                parsed = json.loads(response.read().decode("utf-8"))
-                candidates = parsed.get("candidates") or []
-                if not candidates:
-                    feedback = parsed.get("promptFeedback") or {}
-                    block_reason = feedback.get("blockReason")
-                    if block_reason:
-                        raise ValueError(f"Gemini blocked prompt: {block_reason}")
-                    raise ValueError("No candidates returned by AI provider")
-
-                content = candidates[0].get("content") or {}
-                parts = content.get("parts") or []
-                summary_parts = [str(part.get("text") or "").strip() for part in parts if part.get("text")]
-                summary = " ".join(summary_parts).strip()
-                if not summary:
-                    raise ValueError("Empty summary returned by AI provider")
-                return summary
-        except urlerror.HTTPError as exc:
-            if int(getattr(exc, "code", 0) or 0) == 404:
-                last_http_error = exc
-                continue
-            raise
-
-    if last_http_error is not None:
-        raise last_http_error
-    raise ValueError("Gemini model resolution failed")
-
-
-def _ai_summarize_with_claude(api_key: str, text: str, ratio_percent: float) -> str:
-    sentences = _split_sentences(text)
-    sentence_goal = max(1, min(12, round((ratio_percent / 100.0) * max(1, len(sentences)))))
-
-    model_candidates = ["claude-3-5-haiku-latest", "claude-3-5-sonnet-latest"]
-    system_prompt = "You are a concise summarizer. Return only the final summary text without headings."
-    user_prompt = (
-        f"Summarize the following content in about {sentence_goal} sentences. "
-        f"Keep the most important points and keep it factual.\\n\\n{text}"
-    )
-
-    last_http_error = None
-    for model_name in model_candidates:
+    for current_model in fallback_models:
         payload = {
-            "model": model_name,
-            "max_tokens": 600,
+            "model": current_model,
             "temperature": 0.2,
-            "system": system_prompt,
-            "messages": [{"role": "user", "content": user_prompt}],
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "You are a concise summarizer. Return only the final summary text without headings.",
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"Summarize the following content in about {sentence_goal} sentences. "
+                        f"Keep the most important points and keep it factual.\\n\\n{text}"
+                    ),
+                },
+            ],
         }
 
         req = urlrequest.Request(
-            "https://api.anthropic.com/v1/messages",
+            "https://openrouter.ai/api/v1/chat/completions",
             data=json.dumps(payload).encode("utf-8"),
             headers={
                 "Content-Type": "application/json",
-                "x-api-key": api_key,
-                "anthropic-version": "2023-06-01",
+                "Authorization": f"Bearer {api_key}",
             },
             method="POST",
         )
 
         try:
-            with urlrequest.urlopen(req, timeout=60) as response:
+            # Keep per-model timeout short to avoid serverless execution limits.
+            with urlrequest.urlopen(req, timeout=8) as response:
                 parsed = json.loads(response.read().decode("utf-8"))
-                content = parsed.get("content") or []
-                summary_parts = [
-                    str(item.get("text") or "").strip()
-                    for item in content
-                    if str(item.get("type") or "") == "text" and item.get("text")
-                ]
-                summary = " ".join(summary_parts).strip()
-                if not summary:
-                    raise ValueError("Empty summary returned by AI provider")
-                return summary
-        except urlerror.HTTPError as exc:
-            status_code = int(getattr(exc, "code", 0) or 0)
-            if status_code in (400, 404):
-                last_http_error = exc
-                continue
-            raise
+                choices = parsed.get("choices") or []
+                if not choices:
+                    last_error = ValueError(f"No choices returned by model {current_model}")
+                    continue
 
-    if last_http_error is not None:
-        raise last_http_error
-    raise ValueError("Claude model resolution failed")
+                message = choices[0].get("message") or {}
+                summary = str(message.get("content") or "").strip()
+                if not summary:
+                    last_error = ValueError(f"Empty summary returned by model {current_model}")
+                    continue
+
+                return summary
+        except (urlerror.HTTPError, urlerror.URLError, TimeoutError, ValueError, KeyError, json.JSONDecodeError) as exc:
+            last_error = exc
+            continue
+
+    if last_error is not None:
+        raise last_error
+    raise ValueError("OpenRouter model fallback failed")
 
 
 def _get_supabase_client() -> Client:
@@ -498,14 +349,7 @@ def ai_summarize():
 
     try:
         provider = _infer_ai_provider(api_key)
-        if provider == "gemini":
-            ai_summary = _ai_summarize_with_gemini(api_key, source_text, ratio_percent)
-        elif provider == "claude":
-            ai_summary = _ai_summarize_with_claude(api_key, source_text, ratio_percent)
-        elif provider == "openrouter":
-            ai_summary = _ai_summarize_with_openrouter(api_key, source_text, ratio_percent)
-        else:
-            ai_summary = _ai_summarize_with_openai(api_key, source_text, ratio_percent)
+        ai_summary = _ai_summarize_with_openrouter(api_key, source_text, ratio_percent)
 
         return jsonify(
             {
