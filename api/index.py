@@ -151,6 +151,12 @@ def _get_ai_api_key() -> str:
     return ""
 
 
+class OpenRouterFallbackError(Exception):
+    def __init__(self, attempts: list[Dict[str, Any]]):
+        self.attempts = attempts
+        super().__init__("All OpenRouter fallback models failed")
+
+
 def _ai_summarize_with_openrouter(api_key: str, text: str, ratio_percent: float) -> str:
     sentences = _split_sentences(text)
     sentence_goal = max(1, min(12, round((ratio_percent / 100.0) * max(1, len(sentences)))))
@@ -160,7 +166,7 @@ def _ai_summarize_with_openrouter(api_key: str, text: str, ratio_percent: float)
         "meta-llama/llama-3.1-8b-instruct:free",
         "openrouter/free",
     ]
-    last_error = None
+    attempt_failures: list[Dict[str, Any]] = []
 
     for current_model in fallback_models:
         payload = {
@@ -197,23 +203,78 @@ def _ai_summarize_with_openrouter(api_key: str, text: str, ratio_percent: float)
                 parsed = json.loads(response.read().decode("utf-8"))
                 choices = parsed.get("choices") or []
                 if not choices:
-                    last_error = ValueError(f"No choices returned by model {current_model}")
+                    attempt_failures.append(
+                        {
+                            "model": current_model,
+                            "type": "invalid_response",
+                            "reason": "No choices returned",
+                        }
+                    )
                     continue
 
                 message = choices[0].get("message") or {}
-                summary = str(message.get("content") or "").strip()
+                content = message.get("content")
+                if isinstance(content, list):
+                    parts = []
+                    for item in content:
+                        if isinstance(item, dict):
+                            text_part = str(item.get("text") or "").strip()
+                            if text_part:
+                                parts.append(text_part)
+                    summary = " ".join(parts).strip()
+                else:
+                    summary = str(content or "").strip()
+
                 if not summary:
-                    last_error = ValueError(f"Empty summary returned by model {current_model}")
+                    attempt_failures.append(
+                        {
+                            "model": current_model,
+                            "type": "invalid_response",
+                            "reason": "Empty summary returned",
+                        }
+                    )
                     continue
 
                 return summary
-        except (urlerror.HTTPError, urlerror.URLError, TimeoutError, ValueError, KeyError, json.JSONDecodeError) as exc:
-            last_error = exc
+        except urlerror.HTTPError as exc:
+            attempt_failures.append(
+                {
+                    "model": current_model,
+                    "type": "http_error",
+                    "status": int(getattr(exc, "code", 0) or 0),
+                    "reason": str(getattr(exc, "reason", "") or ""),
+                }
+            )
+            continue
+        except urlerror.URLError as exc:
+            attempt_failures.append(
+                {
+                    "model": current_model,
+                    "type": "network_error",
+                    "reason": str(getattr(exc, "reason", "") or str(exc)),
+                }
+            )
+            continue
+        except TimeoutError:
+            attempt_failures.append(
+                {
+                    "model": current_model,
+                    "type": "timeout",
+                    "reason": "Request timed out",
+                }
+            )
+            continue
+        except (ValueError, KeyError, json.JSONDecodeError) as exc:
+            attempt_failures.append(
+                {
+                    "model": current_model,
+                    "type": "parse_error",
+                    "reason": str(exc),
+                }
+            )
             continue
 
-    if last_error is not None:
-        raise last_error
-    raise ValueError("OpenRouter model fallback failed")
+    raise OpenRouterFallbackError(attempt_failures)
 
 
 def _get_supabase_client() -> Client:
@@ -356,6 +417,19 @@ def ai_summarize():
                 "usedFallback": False,
                 "provider": provider,
             }
+        )
+    except OpenRouterFallbackError as exc:
+        return jsonify(
+            _build_local_summary_response(
+                local_summary,
+                "All OpenRouter fallback models failed. Returned local summary.",
+                {
+                    "type": "model_fallback_failed",
+                    "reason": str(exc),
+                    "provider": _infer_ai_provider(api_key),
+                    "attempts": exc.attempts,
+                },
+            )
         )
     except urlerror.HTTPError as exc:
         return jsonify(
