@@ -144,10 +144,6 @@ def _infer_ai_provider(api_key: str) -> str:
 
 
 def _get_ai_api_key() -> str:
-    primary = os.getenv("AI_API_KEY", "").strip()
-    if primary:
-        return primary
-
     openrouter_key = os.getenv("OPENROUTER_API_KEY", "").strip()
     if openrouter_key:
         return openrouter_key
