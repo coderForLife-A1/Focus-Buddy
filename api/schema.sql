@@ -26,3 +26,18 @@ create table if not exists public.todos (
 
 create index if not exists idx_todos_is_done_id on public.todos (is_done, id desc);
 create index if not exists idx_todos_due_date on public.todos (due_date);
+
+create table if not exists public.microsoft_auth_sessions (
+  auth_session_id text primary key,
+  access_token text not null,
+  refresh_token text,
+  expires_at bigint not null,
+  display_name text,
+  user_principal_name text,
+  user_id text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_microsoft_auth_sessions_expires_at on public.microsoft_auth_sessions (expires_at desc);
+create index if not exists idx_microsoft_auth_sessions_user_principal_name on public.microsoft_auth_sessions (user_principal_name);
