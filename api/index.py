@@ -23,6 +23,10 @@ app.secret_key = (os.getenv("FLASK_SECRET_KEY") or os.getenv("SESSION_SECRET") o
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = os.getenv("SESSION_COOKIE_SAMESITE", "Lax")
 app.config["SESSION_COOKIE_SECURE"] = (os.getenv("SESSION_COOKIE_SECURE", "false").strip().lower() == "true")
+app.config["SESSION_REFRESH_EACH_REQUEST"] = False
+
+_microsoft_token_cache: Dict[str, Dict[str, Any]] = {}
+_MICROSOFT_SESSION_TABLE = "microsoft_auth_sessions"
 
 
 def _is_truthy_env(var_name: str, default: bool = False) -> bool:
@@ -416,53 +420,134 @@ def _sanitize_redirect_target(raw_target: str) -> str:
     return candidate
 
 
-def _save_delegated_token_result(token_result: Dict[str, Any]) -> None:
+def _get_microsoft_auth_session_id() -> Optional[str]:
+    auth_session_id = str(session.get("ms_auth_session_id") or "").strip()
+    return auth_session_id or None
+
+
+def _get_microsoft_auth_session_id() -> Optional[str]:
+    auth_session_id = str(session.get("ms_auth_session_id") or "").strip()
+    return auth_session_id or None
+
+
+def _persist_microsoft_auth_session(auth_session_id: str, token_result: Dict[str, Any]) -> None:
     access_token = token_result.get("access_token")
     if not access_token:
-        return
+        raise RuntimeError("Missing access token in delegated auth result")
 
     expires_in = int(token_result.get("expires_in") or 0)
     refresh_token = token_result.get("refresh_token")
     id_token_claims = token_result.get("id_token_claims") or {}
-
-    session["ms_graph_access_token"] = access_token
-    session["ms_graph_refresh_token"] = refresh_token
-    session["ms_graph_expires_at"] = int(time.time()) + max(0, expires_in - 60)
-    session["ms_graph_id_token_claims"] = id_token_claims
-    session["ms_graph_authenticated"] = True
-
-    session["ms_graph_user"] = {
+    expires_at = int(time.time()) + max(0, expires_in - 60)
+    user_info = {
         "displayName": id_token_claims.get("name"),
         "userPrincipalName": id_token_claims.get("preferred_username") or id_token_claims.get("upn") or id_token_claims.get("email"),
         "userId": id_token_claims.get("oid") or id_token_claims.get("sub"),
     }
 
+    session["ms_auth_session_id"] = auth_session_id
+    session["ms_graph_authenticated"] = True
+    session["ms_graph_user"] = user_info
+
+    record = {
+        "auth_session_id": auth_session_id,
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "expires_at": expires_at,
+        "display_name": user_info.get("displayName"),
+        "user_principal_name": user_info.get("userPrincipalName"),
+        "user_id": user_info.get("userId"),
+    }
+
+    _microsoft_token_cache[auth_session_id] = {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "expires_at": expires_at,
+        "user": user_info,
+    }
+
+    try:
+        supabase = _get_supabase_client()
+        supabase.table(_MICROSOFT_SESSION_TABLE).upsert(record, on_conflict="auth_session_id").execute()
+    except Exception:
+        # Keep local fallback working even if persistence is unavailable.
+        pass
+
+
+def _save_delegated_token_result(token_result: Dict[str, Any]) -> str:
+    auth_session_id = str(session.get("ms_auth_session_id") or "").strip() or secrets.token_urlsafe(32)
+    _persist_microsoft_auth_session(auth_session_id, token_result)
+    return auth_session_id
+
 
 def _clear_microsoft_auth_session() -> None:
+    auth_session_id = _get_microsoft_auth_session_id()
+    if auth_session_id:
+        _microsoft_token_cache.pop(auth_session_id, None)
+        try:
+            supabase = _get_supabase_client()
+            supabase.table(_MICROSOFT_SESSION_TABLE).delete().eq("auth_session_id", auth_session_id).execute()
+        except Exception:
+            pass
+
     for key in [
-        "ms_graph_access_token",
-        "ms_graph_refresh_token",
-        "ms_graph_expires_at",
-        "ms_graph_id_token_claims",
         "ms_graph_authenticated",
         "ms_graph_user",
         "ms_auth_state",
         "ms_auth_next",
+        "ms_auth_session_id",
     ]:
         session.pop(key, None)
 
 
+def _load_persisted_microsoft_auth_session(auth_session_id: str) -> Optional[Dict[str, Any]]:
+    cached = _microsoft_token_cache.get(auth_session_id)
+    if cached:
+        return cached
+
+    try:
+        supabase = _get_supabase_client()
+        result = supabase.table(_MICROSOFT_SESSION_TABLE).select("*").eq("auth_session_id", auth_session_id).limit(1).execute()
+        rows = result.data or []
+        if not rows:
+            return None
+        row = rows[0] or {}
+        loaded = {
+            "access_token": row.get("access_token"),
+            "refresh_token": row.get("refresh_token"),
+            "expires_at": int(row.get("expires_at") or 0),
+            "user": {
+                "displayName": row.get("display_name"),
+                "userPrincipalName": row.get("user_principal_name"),
+                "userId": row.get("user_id"),
+            },
+        }
+        _microsoft_token_cache[auth_session_id] = loaded
+        return loaded
+    except Exception:
+        return None
+
+
 def _get_delegated_graph_access_token() -> Tuple[Optional[str], Optional[str]]:
-    access_token = session.get("ms_graph_access_token")
-    expires_at = int(session.get("ms_graph_expires_at") or 0)
+    auth_session_id = _get_microsoft_auth_session_id()
+    if not auth_session_id:
+        return None, "Microsoft user session is not authenticated"
+
+    cached = _load_persisted_microsoft_auth_session(auth_session_id)
+    if not cached:
+        return None, "Microsoft user session expired. Sign in again."
+
+    access_token = str(cached.get("access_token") or "").strip()
+    expires_at = int(cached.get("expires_at") or 0)
     now_ts = int(time.time())
 
     if access_token and expires_at > now_ts:
-        return str(access_token), None
+        return access_token, None
 
-    refresh_token = session.get("ms_graph_refresh_token")
+    refresh_token = str(cached.get("refresh_token") or "").strip()
     if not refresh_token:
-        return None, "Microsoft user session is not authenticated"
+        _microsoft_token_cache.pop(auth_session_id, None)
+        return None, "Microsoft user session expired. Sign in again."
 
     msal_app, msal_error = _build_msal_confidential_app()
     if msal_error:
@@ -472,16 +557,22 @@ def _get_delegated_graph_access_token() -> Tuple[Optional[str], Optional[str]]:
 
     try:
         refreshed = msal_app.acquire_token_by_refresh_token(
-            str(refresh_token),
+            refresh_token,
             scopes=_get_graph_delegated_scopes(),
         )
     except Exception as exc:
         return None, f"Failed to refresh delegated token: {exc}"
 
     if not refreshed.get("access_token"):
+        _microsoft_token_cache.pop(auth_session_id, None)
+        try:
+            supabase = _get_supabase_client()
+            supabase.table(_MICROSOFT_SESSION_TABLE).delete().eq("auth_session_id", auth_session_id).execute()
+        except Exception:
+            pass
         return None, str(refreshed.get("error_description") or refreshed.get("error") or "Token refresh failed")
 
-    _save_delegated_token_result(refreshed)
+    _persist_microsoft_auth_session(auth_session_id, refreshed)
     return str(refreshed.get("access_token")), None
 
 
