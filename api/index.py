@@ -1,22 +1,35 @@
 import json
 import os
 import re
+import secrets
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 from urllib import error as urlerror
 from urllib import request as urlrequest
 
 import msal
 from dotenv import load_dotenv
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, redirect, request, session
 from supabase import Client, create_client
 
 load_dotenv()
 load_dotenv(Path(__file__).resolve().parent / ".env")
 
 app = Flask(__name__)
+app.secret_key = (os.getenv("FLASK_SECRET_KEY") or os.getenv("SESSION_SECRET") or "dev-secret-change-me").strip()
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = os.getenv("SESSION_COOKIE_SAMESITE", "Lax")
+app.config["SESSION_COOKIE_SECURE"] = (os.getenv("SESSION_COOKIE_SECURE", "false").strip().lower() == "true")
+
+
+def _is_truthy_env(var_name: str, default: bool = False) -> bool:
+    raw_value = os.getenv(var_name)
+    if raw_value is None:
+        return default
+    return str(raw_value).strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _initialize_supabase_client() -> Client:
@@ -342,6 +355,136 @@ def _acquire_graph_token() -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     return None, str(error_description)
 
 
+def _get_graph_delegated_scopes() -> list[str]:
+    scopes_raw = os.getenv("AZURE_DELEGATED_SCOPES", "Tasks.ReadWrite")
+    reserved_scopes = {"openid", "profile", "offline_access"}
+    scopes = [
+        scope.strip()
+        for scope in scopes_raw.split(",")
+        if scope.strip() and scope.strip().lower() not in reserved_scopes
+    ]
+    return scopes or ["Tasks.ReadWrite"]
+
+
+def _get_microsoft_redirect_uri() -> str:
+    configured = (os.getenv("AZURE_AUTH_REDIRECT_URI") or "").strip()
+    if configured:
+        return configured
+
+    return f"{request.host_url.rstrip('/')}/api/auth/microsoft/callback"
+
+
+def _build_msal_confidential_app() -> Tuple[Optional[msal.ConfidentialClientApplication], Optional[str]]:
+    tenant_id = (os.getenv("AZURE_TENANT_ID", "") or os.getenv("GRAPH_TENANT_ID", "")).strip()
+    client_id = (os.getenv("AZURE_CLIENT_ID", "") or os.getenv("GRAPH_CLIENT_ID", "")).strip()
+    client_secret = (os.getenv("AZURE_CLIENT_SECRET", "") or os.getenv("GRAPH_CLIENT_SECRET", "")).strip()
+
+    if not tenant_id or not client_id or not client_secret:
+        return None, "Missing AZURE_TENANT_ID, AZURE_CLIENT_ID, or AZURE_CLIENT_SECRET"
+
+    authority = f"https://login.microsoftonline.com/{tenant_id}"
+    try:
+        return (
+            msal.ConfidentialClientApplication(
+                client_id=client_id,
+                authority=authority,
+                client_credential=client_secret,
+            ),
+            None,
+        )
+    except Exception as exc:
+        return None, f"Failed to initialize Microsoft auth client: {exc}"
+
+
+def _sanitize_redirect_target(raw_target: str) -> str:
+    candidate = (raw_target or "").strip()
+    if not candidate:
+        return "/todo.html"
+
+    if candidate.startswith("/"):
+        return candidate
+
+    parsed = urlparse(candidate)
+    if parsed.scheme not in {"http", "https"}:
+        return "/todo.html"
+
+    host = (parsed.hostname or "").lower()
+    request_host = (request.host or "").split(":")[0].lower()
+    if host not in {"localhost", "127.0.0.1", request_host}:
+        return "/todo.html"
+
+    return candidate
+
+
+def _save_delegated_token_result(token_result: Dict[str, Any]) -> None:
+    access_token = token_result.get("access_token")
+    if not access_token:
+        return
+
+    expires_in = int(token_result.get("expires_in") or 0)
+    refresh_token = token_result.get("refresh_token")
+    id_token_claims = token_result.get("id_token_claims") or {}
+
+    session["ms_graph_access_token"] = access_token
+    session["ms_graph_refresh_token"] = refresh_token
+    session["ms_graph_expires_at"] = int(time.time()) + max(0, expires_in - 60)
+    session["ms_graph_id_token_claims"] = id_token_claims
+    session["ms_graph_authenticated"] = True
+
+    session["ms_graph_user"] = {
+        "displayName": id_token_claims.get("name"),
+        "userPrincipalName": id_token_claims.get("preferred_username") or id_token_claims.get("upn") or id_token_claims.get("email"),
+        "userId": id_token_claims.get("oid") or id_token_claims.get("sub"),
+    }
+
+
+def _clear_microsoft_auth_session() -> None:
+    for key in [
+        "ms_graph_access_token",
+        "ms_graph_refresh_token",
+        "ms_graph_expires_at",
+        "ms_graph_id_token_claims",
+        "ms_graph_authenticated",
+        "ms_graph_user",
+        "ms_auth_state",
+        "ms_auth_next",
+    ]:
+        session.pop(key, None)
+
+
+def _get_delegated_graph_access_token() -> Tuple[Optional[str], Optional[str]]:
+    access_token = session.get("ms_graph_access_token")
+    expires_at = int(session.get("ms_graph_expires_at") or 0)
+    now_ts = int(time.time())
+
+    if access_token and expires_at > now_ts:
+        return str(access_token), None
+
+    refresh_token = session.get("ms_graph_refresh_token")
+    if not refresh_token:
+        return None, "Microsoft user session is not authenticated"
+
+    msal_app, msal_error = _build_msal_confidential_app()
+    if msal_error:
+        return None, msal_error
+    if msal_app is None:
+        return None, "Microsoft auth client unavailable"
+
+    try:
+        refreshed = msal_app.acquire_token_by_refresh_token(
+            str(refresh_token),
+            scopes=_get_graph_delegated_scopes(),
+        )
+    except Exception as exc:
+        return None, f"Failed to refresh delegated token: {exc}"
+
+    if not refreshed.get("access_token"):
+        return None, str(refreshed.get("error_description") or refreshed.get("error") or "Token refresh failed")
+
+    _save_delegated_token_result(refreshed)
+    return str(refreshed.get("access_token")), None
+
+
 def _graph_request(
     method: str,
     url: str,
@@ -385,16 +528,14 @@ def _graph_request(
 
 def _graph_todo_user_identifier() -> Tuple[Optional[str], Optional[str]]:
     user_identifier = (
-        request.args.get("userPrincipalName")
-        or request.args.get("userId")
-        or (os.getenv("AZURE_TODO_USER_PRINCIPAL_NAME", "") or os.getenv("GRAPH_TODO_USER_PRINCIPAL_NAME", ""))
+        (os.getenv("AZURE_TODO_USER_PRINCIPAL_NAME", "") or os.getenv("GRAPH_TODO_USER_PRINCIPAL_NAME", ""))
         or ""
     ).strip()
 
     if user_identifier:
         return user_identifier, None
 
-    return None, "Provide userPrincipalName or userId in the request, or set AZURE_TODO_USER_PRINCIPAL_NAME"
+    return None, "Set AZURE_TODO_USER_PRINCIPAL_NAME for app-only fallback, or sign in with Microsoft for delegated mode"
 
 
 def _serialize_graph_todo_list(todo_list: Dict[str, Any]) -> Dict[str, Any]:
@@ -428,12 +569,20 @@ def _serialize_graph_todo_task(todo_task: Dict[str, Any], list_id: str, list_nam
 
 def _resolve_graph_todo_list_id(
     access_token: str,
-    user_identifier: str,
+    user_identifier: Optional[str] = None,
     requested_list_id: Optional[str] = None,
+    use_me_endpoint: bool = False,
 ) -> Tuple[Optional[Dict[str, Any]], Optional[list], Optional[str]]:
+    if use_me_endpoint:
+        lists_url = "https://graph.microsoft.com/v1.0/me/todo/lists"
+    else:
+        if not user_identifier:
+            return None, None, "Missing Microsoft To Do user identifier"
+        lists_url = f"https://graph.microsoft.com/v1.0/users/{quote(user_identifier, safe='')}/todo/lists"
+
     lists_response = _graph_request(
         "GET",
-        f"https://graph.microsoft.com/v1.0/users/{quote(user_identifier, safe='')}/todo/lists",
+        lists_url,
         access_token,
     )
     if not lists_response["ok"]:
@@ -457,34 +606,42 @@ def _resolve_graph_todo_list_id(
     return selected_list, lists, None
 
 
-def _load_graph_todo_view() -> Tuple[Optional[Dict[str, Any]], Optional[int], Optional[Dict[str, Any]]]:
-    token_result, error_message = _acquire_graph_token()
-    if error_message:
-        return None, 500, {"reason": error_message}
-
-    user_identifier, user_error = _graph_todo_user_identifier()
-    if user_error:
-        return None, 400, {"reason": user_error}
-
-    requested_list_id = (request.args.get("listId") or "").strip() or None
-    selected_list, lists, list_error = _resolve_graph_todo_list_id(token_result["access_token"], user_identifier, requested_list_id)
+def _load_graph_todo_view(
+    access_token: str,
+    requested_list_id: Optional[str],
+    user_identifier: Optional[str] = None,
+    use_me_endpoint: bool = False,
+    source: str = "microsoft",
+    read_only: bool = True,
+) -> Tuple[Optional[Dict[str, Any]], Optional[int], Optional[Dict[str, Any]]]:
+    selected_list, lists, list_error = _resolve_graph_todo_list_id(
+        access_token,
+        user_identifier,
+        requested_list_id,
+        use_me_endpoint=use_me_endpoint,
+    )
     if list_error:
         return None, 500, {"reason": list_error}
 
     if not selected_list:
         return {
-            "provider": "microsoft",
-            "readOnly": True,
+            "provider": source,
+            "readOnly": read_only,
             "userPrincipalName": user_identifier,
             "lists": [],
             "selectedList": None,
             "todos": [],
         }, None, None
 
+    if use_me_endpoint:
+        tasks_url = f"https://graph.microsoft.com/v1.0/me/todo/lists/{quote(str(selected_list.get('id') or ''), safe='')}/tasks"
+    else:
+        tasks_url = f"https://graph.microsoft.com/v1.0/users/{quote(str(user_identifier or ''), safe='')}/todo/lists/{quote(str(selected_list.get('id') or ''), safe='')}/tasks"
+
     tasks_response = _graph_request(
         "GET",
-        f"https://graph.microsoft.com/v1.0/users/{quote(user_identifier, safe='')}/todo/lists/{quote(str(selected_list.get('id') or ''), safe='')}/tasks",
-        token_result["access_token"],
+        tasks_url,
+        access_token,
     )
     if not tasks_response["ok"]:
         return None, 500, {"reason": f"Failed to load Microsoft To Do tasks: {tasks_response.get('error')}"}
@@ -497,8 +654,8 @@ def _load_graph_todo_view() -> Tuple[Optional[Dict[str, Any]], Optional[int], Op
     ]
 
     return {
-        "provider": "microsoft",
-        "readOnly": True,
+        "provider": source,
+        "readOnly": read_only,
         "userPrincipalName": user_identifier,
         "lists": [_serialize_graph_todo_list(item) for item in lists],
         "selectedList": _serialize_graph_todo_list(selected_list),
@@ -508,15 +665,143 @@ def _load_graph_todo_view() -> Tuple[Optional[Dict[str, Any]], Optional[int], Op
 
 @app.after_request
 def _add_cors_headers(response):
-    response.headers["Access-Control-Allow-Origin"] = "*"
+    request_origin = (request.headers.get("Origin") or "").strip()
+    allowed_origins_raw = os.getenv("CORS_ALLOW_ORIGINS", "http://localhost:5500,http://127.0.0.1:5500")
+    allowed_origins = {item.strip() for item in allowed_origins_raw.split(",") if item.strip()}
+
+    if request_origin and (not allowed_origins or request_origin in allowed_origins):
+        response.headers["Access-Control-Allow-Origin"] = request_origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Vary"] = "Origin"
+    else:
+        response.headers["Access-Control-Allow-Origin"] = "*"
+
     response.headers["Access-Control-Allow-Methods"] = "GET,POST,PATCH,DELETE,OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type,Authorization"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type,Authorization,X-Requested-With"
     return response
 
 
 @app.route("/api/<path:_path>", methods=["OPTIONS"])
 def options_handler(_path: str):
     return "", 204
+
+
+@app.route("/api/auth/microsoft/login", methods=["GET"])
+def microsoft_login():
+    msal_app, msal_error = _build_msal_confidential_app()
+    if msal_error:
+        return _json_error("Microsoft authentication is not configured", 500, {"reason": msal_error})
+    if msal_app is None:
+        return _json_error("Microsoft authentication is unavailable", 500)
+
+    state = secrets.token_urlsafe(24)
+    next_target = _sanitize_redirect_target(request.args.get("next") or "")
+    session["ms_auth_state"] = state
+    session["ms_auth_next"] = next_target
+
+    auth_url = msal_app.get_authorization_request_url(
+        scopes=_get_graph_delegated_scopes(),
+        state=state,
+        redirect_uri=_get_microsoft_redirect_uri(),
+        prompt="select_account",
+    )
+    return redirect(auth_url)
+
+
+@app.route("/api/auth/microsoft/callback", methods=["GET"])
+def microsoft_login_callback():
+    callback_error = (request.args.get("error") or "").strip()
+    if callback_error:
+        return _json_error(
+            "Microsoft login was denied or failed",
+            400,
+            {
+                "error": callback_error,
+                "description": request.args.get("error_description"),
+            },
+        )
+
+    expected_state = session.get("ms_auth_state")
+    received_state = request.args.get("state")
+    if not expected_state or not received_state or str(expected_state) != str(received_state):
+        return _json_error("Invalid Microsoft auth state", 400)
+
+    auth_code = (request.args.get("code") or "").strip()
+    if not auth_code:
+        return _json_error("Missing authorization code", 400)
+
+    msal_app, msal_error = _build_msal_confidential_app()
+    if msal_error:
+        return _json_error("Microsoft authentication is not configured", 500, {"reason": msal_error})
+    if msal_app is None:
+        return _json_error("Microsoft authentication is unavailable", 500)
+
+    try:
+        token_result = msal_app.acquire_token_by_authorization_code(
+            auth_code,
+            scopes=_get_graph_delegated_scopes(),
+            redirect_uri=_get_microsoft_redirect_uri(),
+        )
+    except Exception as exc:
+        return _json_error("Failed to complete Microsoft login", 500, {"reason": str(exc)})
+
+    if not token_result.get("access_token"):
+        return _json_error(
+            "Failed to acquire delegated Graph token",
+            500,
+            {
+                "reason": token_result.get("error_description") or token_result.get("error") or "Unknown error",
+            },
+        )
+
+    _save_delegated_token_result(token_result)
+    session.pop("ms_auth_state", None)
+    redirect_target = _sanitize_redirect_target(session.pop("ms_auth_next", "/todo.html"))
+    return redirect(redirect_target)
+
+
+@app.route("/api/auth/microsoft/logout", methods=["POST", "GET"])
+def microsoft_logout():
+    _clear_microsoft_auth_session()
+    if request.method == "GET":
+        redirect_target = _sanitize_redirect_target(request.args.get("next") or "/todo.html")
+        return redirect(redirect_target)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/auth/microsoft/status", methods=["GET"])
+def microsoft_auth_status():
+    if not session.get("ms_graph_authenticated"):
+        return jsonify(
+            {
+                "authenticated": False,
+                "user": None,
+            }
+        )
+
+    access_token, token_error = _get_delegated_graph_access_token()
+    if token_error:
+        _clear_microsoft_auth_session()
+        return jsonify(
+            {
+                "authenticated": False,
+                "user": None,
+                "reason": token_error,
+            }
+        )
+
+    user_info = session.get("ms_graph_user") or {}
+    return jsonify(
+        {
+            "authenticated": bool(access_token),
+            "user": {
+                "displayName": user_info.get("displayName"),
+                "userPrincipalName": user_info.get("userPrincipalName"),
+                "userId": user_info.get("userId"),
+            },
+            "supportsWrite": True,
+        }
+    )
 
 
 @app.route("/api/ai-config", methods=["GET"])
@@ -543,11 +828,29 @@ def graph_auth_status():
 
 @app.route("/api/microsoft-todo/status", methods=["GET"])
 def microsoft_todo_status():
+    delegated_token, delegated_error = _get_delegated_graph_access_token()
+    if delegated_token and not delegated_error:
+        user_info = session.get("ms_graph_user") or {}
+        return jsonify(
+            {
+                "configured": True,
+                "authenticated": True,
+                "readOnly": False,
+                "supportsWrite": True,
+                "mode": "delegated",
+                "userConfigured": True,
+                "requiresUserPrincipalName": False,
+                "userPrincipalName": user_info.get("userPrincipalName"),
+                "user": user_info,
+            }
+        )
+
     token_result, error_message = _acquire_graph_token()
     if error_message:
         return jsonify(
             {
                 "configured": False,
+                "authenticated": False,
                 "readOnly": True,
                 "supportsWrite": False,
                 "reason": error_message,
@@ -558,8 +861,10 @@ def microsoft_todo_status():
     return jsonify(
         {
             "configured": True,
+            "authenticated": False,
             "readOnly": True,
             "supportsWrite": False,
+            "mode": "application",
             "userConfigured": user_error is None,
             "requiresUserPrincipalName": user_error is not None,
             "userPrincipalName": user_identifier,
@@ -572,19 +877,33 @@ def microsoft_todo_status():
 
 @app.route("/api/microsoft-todo/lists", methods=["GET"])
 def microsoft_todo_lists():
-    token_result, error_message = _acquire_graph_token()
-    if error_message:
-        return _json_error("Microsoft Graph authentication failed", 500, {"reason": error_message})
+    delegated_token, delegated_error = _get_delegated_graph_access_token()
+    mode = "application"
+    user_identifier: Optional[str] = None
+    use_me_endpoint = False
+    access_token: Optional[str] = None
 
-    user_identifier, user_error = _graph_todo_user_identifier()
-    if user_error:
-        return _json_error("Microsoft To Do user not configured", 400, {"reason": user_error})
+    if delegated_token and not delegated_error:
+        mode = "delegated"
+        use_me_endpoint = True
+        access_token = delegated_token
+        user_identifier = (session.get("ms_graph_user") or {}).get("userPrincipalName")
+    else:
+        token_result, error_message = _acquire_graph_token()
+        if error_message:
+            return _json_error("Microsoft Graph authentication failed", 500, {"reason": error_message})
 
-    lists_response = _graph_request(
-        "GET",
-        f"https://graph.microsoft.com/v1.0/users/{quote(user_identifier, safe='')}/todo/lists",
-        token_result["access_token"],
-    )
+        access_token = str(token_result.get("access_token") or "")
+        user_identifier, user_error = _graph_todo_user_identifier()
+        if user_error:
+            return _json_error("Microsoft To Do user not configured", 400, {"reason": user_error})
+
+    if use_me_endpoint:
+        lists_url = "https://graph.microsoft.com/v1.0/me/todo/lists"
+    else:
+        lists_url = f"https://graph.microsoft.com/v1.0/users/{quote(user_identifier or '', safe='')}/todo/lists"
+
+    lists_response = _graph_request("GET", lists_url, access_token)
     if not lists_response["ok"]:
         return _json_error(
             "Failed to load Microsoft To Do lists",
@@ -594,16 +913,105 @@ def microsoft_todo_lists():
 
     raw_lists = (lists_response.get("data") or {}).get("value") or []
     lists = [_serialize_graph_todo_list(item) for item in raw_lists if isinstance(item, dict)]
-    return jsonify({"provider": "microsoft", "userPrincipalName": user_identifier, "lists": lists})
+    return jsonify(
+        {
+            "provider": "microsoft",
+            "mode": mode,
+            "readOnly": mode != "delegated",
+            "userPrincipalName": user_identifier,
+            "lists": lists,
+        }
+    )
 
 
 @app.route("/api/microsoft-todo/tasks", methods=["GET", "POST"])
 def microsoft_todo_tasks_collection():
+    delegated_token, delegated_error = _get_delegated_graph_access_token()
+    delegated_active = bool(delegated_token and not delegated_error)
+
     if request.method == "GET":
-        payload, status_code, error_details = _load_graph_todo_view()
+        requested_list_id = (request.args.get("listId") or "").strip() or None
+
+        if delegated_active:
+            user_info = session.get("ms_graph_user") or {}
+            payload, status_code, error_details = _load_graph_todo_view(
+                access_token=delegated_token,
+                requested_list_id=requested_list_id,
+                user_identifier=user_info.get("userPrincipalName"),
+                use_me_endpoint=True,
+                source="microsoft",
+                read_only=False,
+            )
+        else:
+            token_result, error_message = _acquire_graph_token()
+            if error_message:
+                return _json_error("Failed to load Microsoft To Do tasks", 500, {"reason": error_message})
+
+            user_identifier, user_error = _graph_todo_user_identifier()
+            if user_error:
+                return _json_error("Failed to load Microsoft To Do tasks", 400, {"reason": user_error})
+
+            payload, status_code, error_details = _load_graph_todo_view(
+                access_token=str(token_result.get("access_token") or ""),
+                requested_list_id=requested_list_id,
+                user_identifier=user_identifier,
+                use_me_endpoint=False,
+                source="microsoft",
+                read_only=True,
+            )
+
         if error_details is not None:
             return _json_error("Failed to load Microsoft To Do tasks", status_code or 500, error_details)
         return jsonify(payload)
+
+    if not delegated_active:
+        return _json_error(
+            "Microsoft To Do write operations require Microsoft user login",
+            401,
+            {
+                "reason": "Authenticate via /api/auth/microsoft/login and retry.",
+            },
+        )
+
+    payload = _read_json()
+    title = str(payload.get("title") or "").strip()
+    if not title:
+        return _json_error("Title is required", 400)
+
+    requested_list_id = str(payload.get("listId") or request.args.get("listId") or "").strip() or None
+    selected_list, _lists, list_error = _resolve_graph_todo_list_id(
+        delegated_token,
+        requested_list_id=requested_list_id,
+        use_me_endpoint=True,
+    )
+    if list_error:
+        return _json_error("Failed to resolve Microsoft To Do list", 500, {"reason": list_error})
+    if not selected_list:
+        return _json_error("No Microsoft To Do list found for this account", 404)
+
+    body: Dict[str, Any] = {"title": title}
+    raw_due_date = payload.get("dueDate")
+    due_date = str(raw_due_date).strip() if raw_due_date is not None else ""
+    if due_date:
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", due_date):
+            return _json_error("dueDate must be in YYYY-MM-DD format", 400)
+        body["dueDateTime"] = {"dateTime": f"{due_date}T00:00:00", "timeZone": "UTC"}
+
+    created_response = _graph_request(
+        "POST",
+        f"https://graph.microsoft.com/v1.0/me/todo/lists/{quote(str(selected_list.get('id') or ''), safe='')}/tasks",
+        delegated_token,
+        payload=body,
+    )
+    if not created_response["ok"]:
+        return _json_error(
+            "Failed to create Microsoft To Do task",
+            int(created_response.get("status") or 500),
+            {"reason": created_response.get("error"), "details": created_response.get("details")},
+        )
+
+    created_task = created_response.get("data") or {}
+    return jsonify({"todo": _serialize_graph_todo_task(created_task, str(selected_list.get("id") or ""), str(selected_list.get("displayName") or ""))}), 201
 
     return _json_error(
         "Microsoft To Do write operations are not supported with application credentials",
@@ -616,13 +1024,78 @@ def microsoft_todo_tasks_collection():
 
 @app.route("/api/microsoft-todo/tasks/<task_id>", methods=["PATCH", "DELETE"])
 def microsoft_todo_task_item(task_id: str):
-    return _json_error(
-        "Microsoft To Do write operations are not supported with application credentials",
-        501,
+    delegated_token, delegated_error = _get_delegated_graph_access_token()
+    if delegated_error or not delegated_token:
+        return _json_error(
+            "Microsoft To Do write operations require Microsoft user login",
+            401,
+            {
+                "taskId": task_id,
+                "reason": "Authenticate via /api/auth/microsoft/login and retry.",
+            },
+        )
+
+    request_payload = _read_json()
+    list_id = str(request_payload.get("listId") or request.args.get("listId") or "").strip() or None
+    if not list_id:
+        return _json_error("listId is required", 400)
+
+    task_url = f"https://graph.microsoft.com/v1.0/me/todo/lists/{quote(list_id, safe='')}/tasks/{quote(task_id, safe='')}"
+
+    if request.method == "DELETE":
+        delete_response = _graph_request("DELETE", task_url, delegated_token)
+        if not delete_response["ok"]:
+            return _json_error(
+                "Failed to delete Microsoft To Do task",
+                int(delete_response.get("status") or 500),
+                {"reason": delete_response.get("error"), "details": delete_response.get("details")},
+            )
+        return jsonify({"ok": True})
+
+    update_body: Dict[str, Any] = {}
+    if "title" in request_payload:
+        candidate_title = str(request_payload.get("title") or "").strip()
+        if not candidate_title:
+            return _json_error("Title cannot be empty", 400)
+        update_body["title"] = candidate_title
+
+    if "isDone" in request_payload:
+        update_body["status"] = "completed" if bool(request_payload.get("isDone")) else "notStarted"
+
+    if "dueDate" in request_payload:
+        candidate_due = request_payload.get("dueDate")
+        if candidate_due is None or str(candidate_due).strip() == "":
+            update_body["dueDateTime"] = None
+        else:
+            due_value = str(candidate_due).strip()
+            if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", due_value):
+                return _json_error("dueDate must be in YYYY-MM-DD format", 400)
+            update_body["dueDateTime"] = {"dateTime": f"{due_value}T00:00:00", "timeZone": "UTC"}
+
+    if not update_body:
+        return _json_error("Nothing to update", 400)
+
+    update_response = _graph_request("PATCH", task_url, delegated_token, payload=update_body)
+    if not update_response["ok"]:
+        return _json_error(
+            "Failed to update Microsoft To Do task",
+            int(update_response.get("status") or 500),
+            {"reason": update_response.get("error"), "details": update_response.get("details")},
+        )
+
+    task_response = _graph_request("GET", task_url, delegated_token)
+    if not task_response["ok"]:
+        return jsonify({"ok": True, "updated": True})
+
+    refreshed_task = task_response.get("data") or {}
+    return jsonify(
         {
-            "taskId": task_id,
-            "reason": "Task update and delete require delegated Microsoft Graph auth for To Do endpoints.",
-        },
+            "todo": _serialize_graph_todo_task(
+                refreshed_task,
+                list_id,
+                str(request_payload.get("listName") or ""),
+            )
+        }
     )
 
 

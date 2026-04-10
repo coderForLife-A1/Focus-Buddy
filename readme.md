@@ -64,9 +64,13 @@ All backend routes are exposed under `/api`:
 - GET `/api/microsoft-todo/status`
 - GET `/api/microsoft-todo/lists`
 - GET `/api/microsoft-todo/tasks`
-- POST `/api/microsoft-todo/tasks` (returns `501` for write attempts with app-only auth)
-- PATCH `/api/microsoft-todo/tasks/{taskId}` (returns `501` for write attempts with app-only auth)
-- DELETE `/api/microsoft-todo/tasks/{taskId}` (returns `501` for write attempts with app-only auth)
+- POST `/api/microsoft-todo/tasks` (requires Microsoft user login)
+- PATCH `/api/microsoft-todo/tasks/{taskId}` (requires Microsoft user login)
+- DELETE `/api/microsoft-todo/tasks/{taskId}` (requires Microsoft user login)
+- GET `/api/auth/microsoft/login`
+- GET `/api/auth/microsoft/callback`
+- POST `/api/auth/microsoft/logout`
+- GET `/api/auth/microsoft/status`
 
 ## Environment Variables
 
@@ -82,8 +86,12 @@ Optional variables:
 - `AI_API_KEY` or `OPENROUTER_API_KEY`
 - `AI_PROVIDER` (`openai`, `openrouter`, `gemini`, `claude`)
 - `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`
-- `AZURE_TODO_USER_PRINCIPAL_NAME` or `GRAPH_TODO_USER_PRINCIPAL_NAME` if you want the Microsoft To Do route to default to a specific user
+- `AZURE_AUTH_REDIRECT_URI` (optional; defaults to `{host}/api/auth/microsoft/callback`)
+- `AZURE_DELEGATED_SCOPES` (optional; default `Tasks.ReadWrite`)
+- `AZURE_TODO_USER_PRINCIPAL_NAME` or `GRAPH_TODO_USER_PRINCIPAL_NAME` for app-only fallback reads (optional if you use Microsoft login)
 - `GRAPH_TENANT_ID`, `GRAPH_CLIENT_ID`, `GRAPH_CLIENT_SECRET`, `GRAPH_SCOPES` are still accepted as legacy aliases
+- `FLASK_SECRET_KEY` or `SESSION_SECRET` (strongly recommended for stable login sessions)
+- `CORS_ALLOW_ORIGINS` (comma-separated, for example `http://localhost:5500`)
 - `PORT` (default `5000`)
 
 Note: with the current dependency versions, use a JWT-style Supabase key for backend auth.
@@ -131,10 +139,10 @@ If frontend and backend run on different origins locally, ensure requests target
 	Use a JWT-style legacy `service_role` key in `SUPABASE_SERVICE_ROLE_KEY` (usually starts with `eyJ` and has three dot-separated parts).
 
 - Microsoft To Do route returns `400`:
-	Provide `userPrincipalName` or `userId` in the request query string, or set `AZURE_TODO_USER_PRINCIPAL_NAME` for a default user.
+	If you are not logged in with Microsoft and app-only fallback is used, set `AZURE_TODO_USER_PRINCIPAL_NAME`.
 
-- Microsoft To Do write attempts return `501`:
-	The current backend uses application credentials, which are enough for reading To Do data but not for create/update/delete on those Graph endpoints.
+- Microsoft To Do write attempts return `401`:
+	Sign in through `/api/auth/microsoft/login` first. Write operations are enabled only with delegated user auth.
 
 - Tables not found (`PGRST205` for `public.todos` or `public.focus_sessions`):
 	Run `api/schema.sql` in Supabase SQL Editor, then retry the API calls.

@@ -151,6 +151,10 @@
             flex-wrap: wrap;
         }
 
+        .source-actions .btn[hidden] {
+            display: none;
+        }
+
         .todo-readonly-label {
             display: inline-flex;
             align-items: center;
@@ -429,13 +433,14 @@
                 <div class="source-actions">
                     <button id="useLocalTodoBtn" class="btn btn-secondary" type="button">Local Tasks</button>
                     <button id="loadMicrosoftTodoBtn" class="btn" type="button">Load Microsoft To Do</button>
+                    <button id="microsoftLoginBtn" class="btn" type="button">Sign in Microsoft</button>
+                    <button id="microsoftLogoutBtn" class="btn btn-secondary" type="button" hidden>Sign out</button>
                 </div>
             </div>
             <div class="todo-input-row" style="margin-top: 12px;">
-                <input id="microsoftTodoUserInput" type="text" maxlength="320" placeholder="Microsoft user principal name, for example user@company.com">
                 <select id="microsoftTodoListSelect" aria-label="Microsoft To Do list" disabled></select>
             </div>
-            <div class="source-note" style="margin-top: 8px;">Microsoft To Do mode is read-only with the current app-only Graph credentials. Create, edit, and delete remain available in local mode.</div>
+            <div id="microsoftModeNote" class="source-note" style="margin-top: 8px;">Sign in to Microsoft to load your own To Do lists and enable task sync.</div>
         </div>
 
         <div class="card">
@@ -486,16 +491,31 @@
         const sourceStatusEl = document.getElementById('sourceStatus');
         const useLocalTodoBtn = document.getElementById('useLocalTodoBtn');
         const loadMicrosoftTodoBtn = document.getElementById('loadMicrosoftTodoBtn');
-        const microsoftTodoUserInput = document.getElementById('microsoftTodoUserInput');
+        const microsoftLoginBtn = document.getElementById('microsoftLoginBtn');
+        const microsoftLogoutBtn = document.getElementById('microsoftLogoutBtn');
+        const microsoftModeNoteEl = document.getElementById('microsoftModeNote');
         const microsoftTodoListSelect = document.getElementById('microsoftTodoListSelect');
 
         let todos = [];
         let todoMode = 'local';
+        let microsoftAuth = {
+            authenticated: false,
+            user: null,
+        };
         let microsoftTodoState = {
             userPrincipalName: '',
             lists: [],
             selectedListId: '',
+            readOnly: true,
         };
+
+        async function apiFetch(path, options = {}) {
+            const mergedOptions = {
+                ...options,
+                credentials: 'include'
+            };
+            return fetch(apiUrl(path), mergedOptions);
+        }
 
         function setMenuOpen(isOpen) {
             document.body.classList.toggle('menu-open', isOpen);
@@ -544,14 +564,46 @@
             sourceStatusEl.textContent = message;
         }
 
+        function setMicrosoftModeNote(message) {
+            microsoftModeNoteEl.textContent = message;
+        }
+
+        function updateAuthButtons() {
+            microsoftLoginBtn.hidden = microsoftAuth.authenticated;
+            microsoftLogoutBtn.hidden = !microsoftAuth.authenticated;
+        }
+
+        async function refreshMicrosoftAuthStatus() {
+            try {
+                const response = await apiFetch('/api/auth/microsoft/status');
+                const data = await response.json();
+                microsoftAuth = {
+                    authenticated: Boolean(data?.authenticated),
+                    user: data?.user || null,
+                };
+            } catch (_error) {
+                microsoftAuth = { authenticated: false, user: null };
+            }
+
+            updateAuthButtons();
+            return microsoftAuth;
+        }
+
         function setTodoMode(nextMode) {
             todoMode = nextMode;
             const isMicrosoftMode = todoMode === 'microsoft';
-            todoInput.disabled = isMicrosoftMode;
-            dueDateInput.disabled = isMicrosoftMode;
-            addTodoBtn.disabled = isMicrosoftMode;
+            const microsoftWritable = isMicrosoftMode && !microsoftTodoState.readOnly;
+            todoInput.disabled = isMicrosoftMode && !microsoftWritable;
+            dueDateInput.disabled = isMicrosoftMode && !microsoftWritable;
+            addTodoBtn.disabled = isMicrosoftMode && !microsoftWritable;
             microsoftTodoListSelect.disabled = !isMicrosoftMode || !microsoftTodoState.lists.length;
-            todoInput.placeholder = isMicrosoftMode ? 'Microsoft To Do mode is read-only' : 'Add a task...';
+            if (isMicrosoftMode) {
+                todoInput.placeholder = microsoftWritable
+                    ? 'Add a Microsoft To Do task...'
+                    : 'Microsoft To Do mode is read-only';
+            } else {
+                todoInput.placeholder = 'Add a task...';
+            }
 
             useLocalTodoBtn.classList.toggle('btn-secondary', true);
             loadMicrosoftTodoBtn.disabled = false;
@@ -562,8 +614,14 @@
                         ? `Microsoft To Do is active for ${microsoftTodoState.userPrincipalName}.`
                         : 'Microsoft To Do is active.'
                 );
+                setMicrosoftModeNote(
+                    microsoftTodoState.readOnly
+                        ? 'Microsoft To Do is running in read-only mode. Sign in to enable create/edit/delete.'
+                        : 'Signed in to Microsoft. Create, edit, complete, and delete now sync to Microsoft To Do.'
+                );
             } else {
                 setSourceStatus('Local Supabase tasks are active.');
+                setMicrosoftModeNote('Sign in to Microsoft to load your own To Do lists and enable task sync.');
             }
         }
 
@@ -623,12 +681,13 @@
             todoEmptyEl.style.display = 'none';
             for (const todo of todos) {
                 const li = document.createElement('li');
-                li.className = todoMode === 'microsoft' ? 'todo-item readonly' : 'todo-item';
+                const isReadOnlyItem = todoMode === 'microsoft' && microsoftTodoState.readOnly;
+                li.className = isReadOnlyItem ? 'todo-item readonly' : 'todo-item';
                 const dueText = todo.dueDate ? `Due: ${escapeHtml(todo.dueDate)}` : 'No due date';
                 const readOnlyLabel = todoMode === 'microsoft'
-                    ? '<span class="todo-readonly-label">Microsoft To Do</span>'
+                    ? `<span class="todo-readonly-label">Microsoft To Do${microsoftTodoState.readOnly ? ' (read-only)' : ''}</span>`
                     : '';
-                const actionsMarkup = todoMode === 'microsoft'
+                const actionsMarkup = todoMode === 'microsoft' && microsoftTodoState.readOnly
                     ? ''
                     : `
                     <div class="todo-actions">
@@ -637,7 +696,7 @@
                     </div>
                 `;
                 li.innerHTML = `
-                    <input type="checkbox" data-id="${escapeHtml(todo.id)}" ${todo.isDone ? 'checked' : ''} ${todoMode === 'microsoft' ? 'disabled' : ''}>
+                    <input type="checkbox" data-id="${escapeHtml(todo.id)}" ${todo.isDone ? 'checked' : ''} ${isReadOnlyItem ? 'disabled' : ''}>
                     <div class="todo-main">
                         <span class="todo-title ${todo.isDone ? 'done' : ''}">${escapeHtml(todo.title)}</span>
                         <span class="todo-meta">${dueText}</span>
@@ -652,7 +711,7 @@
         async function loadLocalTodos() {
             setSourceStatus('Local Supabase tasks are active.');
             try {
-                const response = await fetch(apiUrl('/api/todos'));
+                const response = await apiFetch('/api/todos');
                 if (!response.ok) throw new Error('Failed to load todos');
                 const data = await response.json();
                 todos = data.todos || [];
@@ -661,6 +720,7 @@
                     userPrincipalName: '',
                     lists: [],
                     selectedListId: '',
+                    readOnly: true,
                 };
                 updateMicrosoftTodoListOptions();
                 setTodoMode('local');
@@ -673,19 +733,13 @@
         }
 
         async function loadMicrosoftTodos(listId = '') {
-            const userPrincipalName = microsoftTodoUserInput.value.trim();
-            if (!userPrincipalName) {
-                setSourceStatus('Enter a Microsoft user principal name to load To Do tasks.');
-                return;
-            }
-
-            const params = new URLSearchParams({ userPrincipalName });
+            const params = new URLSearchParams();
             if (listId) {
                 params.set('listId', listId);
             }
 
             try {
-                const response = await fetch(apiUrl(`/api/microsoft-todo/tasks?${params.toString()}`));
+                const response = await apiFetch(`/api/microsoft-todo/tasks${params.toString() ? `?${params.toString()}` : ''}`);
                 const data = await response.json();
                 if (!response.ok) {
                     throw new Error(data?.error || 'Failed to load Microsoft To Do tasks');
@@ -693,15 +747,18 @@
 
                 todos = data.todos || [];
                 microsoftTodoState = {
-                    userPrincipalName: data.userPrincipalName || userPrincipalName,
+                    userPrincipalName: data.userPrincipalName || microsoftAuth.user?.userPrincipalName || '',
                     lists: data.lists || [],
                     selectedListId: data.selectedList?.id ? String(data.selectedList.id) : (listId || ''),
+                    readOnly: Boolean(data.readOnly),
                 };
                 setTodoMode('microsoft');
                 updateMicrosoftTodoListOptions();
                 renderTodos();
                 const listName = data.selectedList?.displayName || 'Microsoft To Do';
-                setSourceStatus(`Showing ${listName} for ${microsoftTodoState.userPrincipalName}. Microsoft To Do is read-only in this mode.`);
+                setSourceStatus(
+                    `Showing ${listName} for ${microsoftTodoState.userPrincipalName || 'current Microsoft account'}.`
+                );
             } catch (error) {
                 console.error(error);
                 setSourceStatus(error.message || 'Unable to load Microsoft To Do right now');
@@ -720,21 +777,30 @@
         }
 
         async function addTodo() {
-            if (todoMode === 'microsoft') {
-                return;
-            }
-
             const title = todoInput.value.trim();
             const dueDate = dueDateInput.value;
             if (!title) return;
 
             addTodoBtn.disabled = true;
             try {
-                const response = await fetch(apiUrl('/api/todos'), {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ title, dueDate: dueDate || null })
-                });
+                let response;
+                if (todoMode === 'microsoft') {
+                    response = await apiFetch('/api/microsoft-todo/tasks', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            title,
+                            dueDate: dueDate || null,
+                            listId: microsoftTodoState.selectedListId || null,
+                        })
+                    });
+                } else {
+                    response = await apiFetch('/api/todos', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ title, dueDate: dueDate || null })
+                    });
+                }
                 if (!response.ok) throw new Error('Failed to add todo');
                 todoInput.value = '';
                 dueDateInput.value = '';
@@ -747,16 +813,23 @@
         }
 
         async function setTodoDone(todoId, isDone) {
-            if (todoMode === 'microsoft') {
-                return;
-            }
-
             try {
-                const response = await fetch(apiUrl(`/api/todos/${todoId}`), {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ isDone })
-                });
+                let response;
+                if (todoMode === 'microsoft') {
+                    const current = todos.find((todo) => normalizeTodoId(todo.id) === normalizeTodoId(todoId));
+                    if (!current?.microsoftTodo?.listId) throw new Error('Missing Microsoft list context');
+                    response = await apiFetch(`/api/microsoft-todo/tasks/${encodeURIComponent(todoId)}?listId=${encodeURIComponent(current.microsoftTodo.listId)}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ isDone, listId: current.microsoftTodo.listId, listName: current.microsoftTodo.listName })
+                    });
+                } else {
+                    response = await apiFetch(`/api/todos/${todoId}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ isDone })
+                    });
+                }
                 if (!response.ok) throw new Error('Failed to update todo');
                 await loadTodos();
             } catch (error) {
@@ -765,10 +838,6 @@
         }
 
         async function editTodoTitle(todoId) {
-            if (todoMode === 'microsoft') {
-                return;
-            }
-
             const current = todos.find((todo) => normalizeTodoId(todo.id) === normalizeTodoId(todoId));
             if (!current) return;
 
@@ -782,11 +851,21 @@
             }
 
             try {
-                const response = await fetch(apiUrl(`/api/todos/${todoId}`), {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ title })
-                });
+                let response;
+                if (todoMode === 'microsoft') {
+                    if (!current?.microsoftTodo?.listId) throw new Error('Missing Microsoft list context');
+                    response = await apiFetch(`/api/microsoft-todo/tasks/${encodeURIComponent(todoId)}?listId=${encodeURIComponent(current.microsoftTodo.listId)}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ title, listId: current.microsoftTodo.listId, listName: current.microsoftTodo.listName })
+                    });
+                } else {
+                    response = await apiFetch(`/api/todos/${todoId}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ title })
+                    });
+                }
                 if (!response.ok) throw new Error('Failed to edit todo');
                 await loadTodos();
             } catch (error) {
@@ -795,14 +874,21 @@
         }
 
         async function removeTodo(todoId) {
-            if (todoMode === 'microsoft') {
-                return;
-            }
-
             try {
-                const response = await fetch(apiUrl(`/api/todos/${todoId}`), {
-                    method: 'DELETE'
-                });
+                let response;
+                if (todoMode === 'microsoft') {
+                    const current = todos.find((todo) => normalizeTodoId(todo.id) === normalizeTodoId(todoId));
+                    if (!current?.microsoftTodo?.listId) throw new Error('Missing Microsoft list context');
+                    response = await apiFetch(`/api/microsoft-todo/tasks/${encodeURIComponent(todoId)}?listId=${encodeURIComponent(current.microsoftTodo.listId)}`, {
+                        method: 'DELETE',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ listId: current.microsoftTodo.listId, listName: current.microsoftTodo.listName })
+                    });
+                } else {
+                    response = await apiFetch(`/api/todos/${todoId}`, {
+                        method: 'DELETE'
+                    });
+                }
                 if (!response.ok) throw new Error('Failed to delete todo');
                 await loadTodos();
             } catch (error) {
@@ -840,8 +926,26 @@
             await loadLocalTodos();
         });
         loadMicrosoftTodoBtn.addEventListener('click', async () => {
+            await refreshMicrosoftAuthStatus();
             microsoftTodoState.selectedListId = microsoftTodoListSelect.value || microsoftTodoState.selectedListId || '';
             await loadMicrosoftTodos(microsoftTodoState.selectedListId);
+        });
+        microsoftLoginBtn.addEventListener('click', () => {
+            const nextTarget = encodeURIComponent(window.location.href);
+            window.location.href = apiUrl(`/api/auth/microsoft/login?next=${nextTarget}`);
+        });
+        microsoftLogoutBtn.addEventListener('click', async () => {
+            try {
+                await apiFetch('/api/auth/microsoft/logout', { method: 'POST' });
+            } catch (_error) {
+                // Ignore logout network errors and clear UI state anyway.
+            }
+
+            microsoftAuth = { authenticated: false, user: null };
+            updateAuthButtons();
+            microsoftTodoState.readOnly = true;
+            setTodoMode('local');
+            await loadLocalTodos();
         });
         microsoftTodoListSelect.addEventListener('change', async () => {
             if (todoMode !== 'microsoft') return;
@@ -863,7 +967,7 @@
             const target = event.target;
             if (!(target instanceof HTMLInputElement)) return;
             if (target.type !== 'checkbox') return;
-            if (todoMode === 'microsoft') return;
+            if (todoMode === 'microsoft' && microsoftTodoState.readOnly) return;
             const todoId = target.dataset.id || '';
             if (!todoId) return;
             setTodoDone(todoId, target.checked);
@@ -872,7 +976,7 @@
         todoListEl.addEventListener('click', (event) => {
             const target = event.target;
             if (!(target instanceof HTMLButtonElement)) return;
-            if (todoMode === 'microsoft') return;
+            if (todoMode === 'microsoft' && microsoftTodoState.readOnly) return;
             const todoId = target.dataset.id || '';
             if (!todoId) return;
 
@@ -885,8 +989,13 @@
             }
         });
 
-        setActiveMenuButton();
-        loadTodos();
+        async function initializeTodoPage() {
+            setActiveMenuButton();
+            await refreshMicrosoftAuthStatus();
+            await loadTodos();
+        }
+
+        initializeTodoPage();
     </script>
 </body>
 </html>
