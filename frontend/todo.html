@@ -768,7 +768,8 @@
         }
 
         async function loadTodos() {
-            if (todoMode === 'microsoft') {
+            if (microsoftAuth.authenticated) {
+                todoMode = 'microsoft';
                 await loadMicrosoftTodos(microsoftTodoState.selectedListId);
                 return;
             }
@@ -992,6 +993,14 @@
         async function initializeTodoPage() {
             setActiveMenuButton();
             await refreshMicrosoftAuthStatus();
+            if (microsoftAuth.authenticated) {
+                todoMode = 'microsoft';
+                microsoftTodoState.readOnly = false;
+                setTodoMode('microsoft');
+                await loadMicrosoftTodos(microsoftTodoState.selectedListId);
+                return;
+            }
+
             await loadTodos();
         }
 
