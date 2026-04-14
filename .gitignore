@@ -45,7 +45,6 @@ flask_session/
 .env
 .env.local
 .env.*.local
-ai_config_local.py
 .envrc
 .secrets
 secrets.*
@@ -74,7 +73,6 @@ yarn-debug.log*
 yarn-error.log*
 .npm
 .yarn-integrity
-package-lock.json
 yarn.lock
 
 # ========================

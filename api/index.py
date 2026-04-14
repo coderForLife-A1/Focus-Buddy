@@ -3,6 +3,7 @@ import os
 import re
 import secrets
 import time
+import base64
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
@@ -299,6 +300,69 @@ def _get_supabase_client() -> Client:
     return _ensure_supabase_client()
 
 
+def _extract_bearer_token() -> str:
+    auth_header = str(request.headers.get("Authorization") or "").strip()
+    if auth_header.lower().startswith("bearer "):
+        token = auth_header[7:].strip()
+        if token:
+            return token
+
+    # Optional fallback header some clients use for proxied auth.
+    return str(request.headers.get("X-Supabase-Auth") or "").strip()
+
+
+def _decode_unverified_jwt_sub(token: str) -> Optional[str]:
+    parts = token.split(".")
+    if len(parts) < 2:
+        return None
+
+    payload_segment = parts[1]
+    padding = "=" * ((4 - (len(payload_segment) % 4)) % 4)
+    try:
+        decoded = base64.urlsafe_b64decode((payload_segment + padding).encode("utf-8")).decode("utf-8")
+        payload = json.loads(decoded)
+        sub = str(payload.get("sub") or "").strip()
+        return sub or None
+    except Exception:
+        return None
+
+
+def _get_request_user_id(required: bool = True) -> Tuple[Optional[str], Optional[str]]:
+    token = _extract_bearer_token()
+    if not token:
+        if required:
+            # Backward-compatible guest mode for static pages that do not yet
+            # attach Supabase JWTs. Data stays user-scoped via session cookie.
+            guest_user_id = str(session.get("focusbuddy_guest_user_id") or "").strip()
+            if not guest_user_id:
+                guest_user_id = f"guest-{secrets.token_urlsafe(18)}"
+                session["focusbuddy_guest_user_id"] = guest_user_id
+            return guest_user_id, None
+        return None, None
+
+    supabase = _get_supabase_client()
+    try:
+        user_response = supabase.auth.get_user(token)
+        user_obj = getattr(user_response, "user", None)
+
+        if user_obj is None and isinstance(user_response, dict):
+            user_obj = user_response.get("user")
+
+        user_id = str(getattr(user_obj, "id", None) or (user_obj.get("id") if isinstance(user_obj, dict) else "") or "").strip()
+        if user_id:
+            return user_id, None
+    except Exception:
+        # Continue to non-verifying fallback extraction so serverless requests
+        # can still be scoped when auth-user fetch is temporarily unavailable.
+        pass
+
+    fallback_sub = _decode_unverified_jwt_sub(token)
+    if fallback_sub:
+        return fallback_sub, None
+
+    return None, "Invalid Supabase auth token"
+
+
 def _serialize_todo(row: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "id": row.get("id"),
@@ -308,6 +372,126 @@ def _serialize_todo(row: Dict[str, Any]) -> Dict[str, Any]:
         "createdAt": row.get("created_at"),
         "updatedAt": row.get("updated_at"),
     }
+
+
+def _extract_timer_minutes(raw_payload: Dict[str, Any], message_text: str) -> int:
+    payload_minutes = raw_payload.get("minutes", raw_payload.get("timerMinutes"))
+    if payload_minutes is not None:
+        try:
+            return max(1, min(240, int(payload_minutes)))
+        except (TypeError, ValueError):
+            pass
+
+    minute_match = re.search(r"(\d{1,3})\s*(m|min|mins|minute|minutes)\b", message_text.lower())
+    if minute_match:
+        try:
+            return max(1, min(240, int(minute_match.group(1))))
+        except (TypeError, ValueError):
+            return 25
+
+    return 25
+
+
+def _openrouter_chat_completion(
+    api_key: str,
+    model: str,
+    messages: list[Dict[str, str]],
+    temperature: float = 0.2,
+    max_tokens: int = 512,
+) -> str:
+    payload = {
+        "model": model,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "messages": messages,
+    }
+
+    req = urlrequest.Request(
+        "https://openrouter.ai/api/v1/chat/completions",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
+        },
+        method="POST",
+    )
+
+    with urlrequest.urlopen(req, timeout=10) as response:
+        parsed = json.loads(response.read().decode("utf-8"))
+        choices = parsed.get("choices") or []
+        if not choices:
+            raise ValueError("OpenRouter returned no choices")
+
+        message = choices[0].get("message") or {}
+        content = message.get("content")
+        if isinstance(content, list):
+            parts = []
+            for item in content:
+                if isinstance(item, dict):
+                    text_part = str(item.get("text") or "").strip()
+                    if text_part:
+                        parts.append(text_part)
+            final_content = " ".join(parts).strip()
+        else:
+            final_content = str(content or "").strip()
+
+    if not final_content:
+        raise ValueError("OpenRouter returned empty content")
+    return final_content
+
+
+def _route_aria_intent(message_text: str, api_key: str) -> str:
+    raw_intent = _openrouter_chat_completion(
+        api_key=api_key,
+        model="meta-llama/llama-3.1-8b-instruct:free",
+        temperature=0.0,
+        max_tokens=12,
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "Classify user intent and return exactly one token: "
+                    "[CHAT], [SUMMARIZE], [HUMANIZE], or [TIMER]."
+                ),
+            },
+            {"role": "user", "content": message_text},
+        ],
+    ).strip().upper()
+
+    if "SUMMARIZE" in raw_intent:
+        return "[SUMMARIZE]"
+    if "HUMANIZE" in raw_intent:
+        return "[HUMANIZE]"
+    if "TIMER" in raw_intent:
+        return "[TIMER]"
+    return "[CHAT]"
+
+
+def _rule_based_intent(message_text: str) -> str:
+    text = message_text.lower()
+    if any(keyword in text for keyword in ["summarize", "summary", "tldr", "tl;dr"]):
+        return "[SUMMARIZE]"
+    if any(keyword in text for keyword in ["humanize", "rewrite", "natural", "friendlier"]):
+        return "[HUMANIZE]"
+    if any(keyword in text for keyword in ["timer", "focus", "pomodoro", "countdown", "start for"]):
+        return "[TIMER]"
+    return "[CHAT]"
+
+
+def _fallback_sorted_tasks_for_user(user_id: Optional[str]) -> list[Dict[str, Any]]:
+    if not user_id:
+        return []
+
+    supabase = _get_supabase_client()
+    result = supabase.table("todos").select("*").eq("user_id", user_id).execute()
+    rows = result.data or []
+    todos = [_serialize_todo(row) for row in rows]
+
+    def sort_key(item: Dict[str, Any]):
+        due_date = item.get("dueDate") or "9999-12-31"
+        return (bool(item.get("isDone")), due_date, str(item.get("title") or "").lower())
+
+    return sorted(todos, key=sort_key)
 
 
 def _build_graph_client() -> Tuple[Optional[msal.ConfidentialClientApplication], Optional[str], Optional[list]]:
@@ -1285,9 +1469,160 @@ def ai_summarize():
         )
 
 
+@app.route("/api/aria", methods=["POST"])
+def aria_command_center():
+    payload = _read_json()
+    message_text = str(payload.get("message") or payload.get("text") or "").strip()
+    if not message_text:
+        return _json_error("message is required", 400)
+
+    api_key = _get_ai_api_key()
+    user_id, _user_error = _get_request_user_id(required=False)
+
+    try:
+        intent = _route_aria_intent(message_text, api_key) if api_key else _rule_based_intent(message_text)
+
+        if intent == "[SUMMARIZE]":
+            ratio_percent = payload.get("ratioPercent", 25)
+            try:
+                ratio_percent = float(ratio_percent)
+            except (TypeError, ValueError):
+                ratio_percent = 25.0
+            ratio_percent = max(10.0, min(50.0, ratio_percent))
+
+            source_text = str(payload.get("text") or payload.get("sourceText") or message_text).strip()
+            local_summary = _fallback_extract_summary(source_text, ratio_percent)
+
+            if not api_key:
+                return jsonify(
+                    {
+                        "intent": intent,
+                        "reply": local_summary["summary"],
+                        "usedFallback": True,
+                        "provider": "local",
+                        "warning": "OPENROUTER_API_KEY not configured",
+                    }
+                )
+
+            ai_summary, model_used = _ai_summarize_with_openrouter(api_key, source_text, ratio_percent)
+            return jsonify(
+                {
+                    "intent": intent,
+                    "reply": ai_summary,
+                    "usedFallback": False,
+                    "provider": "openrouter",
+                    "modelUsed": model_used,
+                }
+            )
+
+        if intent == "[HUMANIZE]":
+            source_text = str(payload.get("text") or message_text).strip()
+            if not api_key:
+                return jsonify(
+                    {
+                        "intent": intent,
+                        "reply": source_text,
+                        "usedFallback": True,
+                        "provider": "local",
+                        "warning": "OPENROUTER_API_KEY not configured",
+                    }
+                )
+
+            humanized = _openrouter_chat_completion(
+                api_key=api_key,
+                model="arcee-ai/trinity-large-preview:free",
+                temperature=0.65,
+                max_tokens=700,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "Rewrite text to sound natural and human while preserving meaning. Return only the rewritten text.",
+                    },
+                    {"role": "user", "content": source_text},
+                ],
+            )
+            return jsonify(
+                {
+                    "intent": intent,
+                    "reply": humanized,
+                    "usedFallback": False,
+                    "provider": "openrouter",
+                    "modelUsed": "arcee-ai/trinity-large-preview:free",
+                }
+            )
+
+        if intent == "[TIMER]":
+            minutes = _extract_timer_minutes(payload, message_text)
+            return jsonify(
+                {
+                    "intent": intent,
+                    "reply": f"Starting a {minutes}-minute focus sprint.",
+                    "command": {
+                        "type": "START_TIMER",
+                        "minutes": minutes,
+                    },
+                }
+            )
+
+        if not api_key:
+            return jsonify(
+                {
+                    "intent": "[CHAT]",
+                    "reply": "Aria is running in local mode. Set OPENROUTER_API_KEY for full intelligence.",
+                    "usedFallback": True,
+                    "provider": "local",
+                }
+            )
+
+        chat_reply = _openrouter_chat_completion(
+            api_key=api_key,
+            model="meta-llama/llama-3.1-8b-instruct:free",
+            temperature=0.45,
+            max_tokens=700,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are Aria, a concise productivity copilot for developers.",
+                },
+                {"role": "user", "content": message_text},
+            ],
+        )
+        return jsonify(
+            {
+                "intent": "[CHAT]",
+                "reply": chat_reply,
+                "usedFallback": False,
+                "provider": "openrouter",
+                "modelUsed": "meta-llama/llama-3.1-8b-instruct:free",
+            }
+        )
+    except Exception as exc:
+        fallback_sorted_tasks = []
+        fallback_error = None
+        try:
+            fallback_sorted_tasks = _fallback_sorted_tasks_for_user(user_id)
+        except Exception as sort_exc:
+            fallback_error = str(sort_exc)
+
+        return jsonify(
+            {
+                "intent": "[CHAT]",
+                "usedFallback": True,
+                "provider": "local",
+                "reply": "Aria AI is temporarily unavailable. Returning locally sorted tasks.",
+                "tasks": fallback_sorted_tasks,
+                "fallbackReason": str(exc),
+                "fallbackError": fallback_error,
+            }
+        )
+
+
 @app.route("/api/focus-sessions", methods=["POST"])
 def create_focus_session():
     supabase = _get_supabase_client()
+    user_id, user_error = _get_request_user_id()
+    if user_error:
+        return _json_error("Unauthorized", 401, {"reason": user_error})
 
     payload = _read_json()
     required = ["startedAt", "endedAt", "sessionMs", "focusMs", "focusRate", "distractionCount"]
@@ -1314,6 +1649,7 @@ def create_focus_session():
     client_session_id = payload.get("clientSessionId")
 
     row = {
+        "user_id": user_id,
         "client_session_id": client_session_id,
         "started_at": payload["startedAt"],
         "ended_at": payload["endedAt"],
@@ -1330,6 +1666,7 @@ def create_focus_session():
             existing = (
                 supabase.table("focus_sessions")
                 .select("id")
+                .eq("user_id", user_id)
                 .eq("client_session_id", client_session_id)
                 .limit(1)
                 .execute()
@@ -1337,7 +1674,7 @@ def create_focus_session():
             existing_rows = existing.data or []
             if existing_rows:
                 session_id = existing_rows[0].get("id")
-                updated = supabase.table("focus_sessions").update(row).eq("id", session_id).execute()
+                updated = supabase.table("focus_sessions").update(row).eq("id", session_id).eq("user_id", user_id).execute()
                 updated_rows = updated.data or []
                 if updated_rows:
                     session_id = updated_rows[0].get("id", session_id)
@@ -1355,12 +1692,15 @@ def create_focus_session():
 @app.route("/api/focus-sessions", methods=["GET"])
 def list_focus_sessions():
     supabase = _get_supabase_client()
+    user_id, user_error = _get_request_user_id()
+    if user_error:
+        return _json_error("Unauthorized", 401, {"reason": user_error})
 
     from_date = (request.args.get("from") or "").strip()
     to_date = (request.args.get("to") or "").strip()
 
     try:
-        query = supabase.table("focus_sessions").select("*").order("id", desc=True).limit(100)
+        query = supabase.table("focus_sessions").select("*").eq("user_id", user_id).order("id", desc=True).limit(100)
         if from_date:
             query = query.gte("ended_at", from_date)
         if to_date:
@@ -1393,9 +1733,12 @@ def list_focus_sessions():
 @app.route("/api/focus-sessions", methods=["DELETE"])
 def delete_focus_sessions():
     supabase = _get_supabase_client()
+    user_id, user_error = _get_request_user_id()
+    if user_error:
+        return _json_error("Unauthorized", 401, {"reason": user_error})
 
     try:
-        supabase.table("focus_sessions").delete().gt("id", -1).execute()
+        supabase.table("focus_sessions").delete().eq("user_id", user_id).execute()
         return jsonify({"ok": True, "message": "All history cleared successfully"})
     except Exception as exc:
         return _json_error("Failed to clear history", 500, {"reason": str(exc)})
@@ -1404,9 +1747,12 @@ def delete_focus_sessions():
 @app.route("/api/todos", methods=["GET"])
 def list_todos():
     supabase = _get_supabase_client()
+    user_id, user_error = _get_request_user_id()
+    if user_error:
+        return _json_error("Unauthorized", 401, {"reason": user_error})
 
     try:
-        result = supabase.table("todos").select("*").order("is_done").order("id", desc=True).execute()
+        result = supabase.table("todos").select("*").eq("user_id", user_id).order("is_done").order("id", desc=True).execute()
         rows = result.data or []
         todos = [_serialize_todo(row) for row in rows]
         return jsonify({"todos": todos})
@@ -1417,6 +1763,9 @@ def list_todos():
 @app.route("/api/todos", methods=["POST"])
 def create_todo():
     supabase = _get_supabase_client()
+    user_id, user_error = _get_request_user_id()
+    if user_error:
+        return _json_error("Unauthorized", 401, {"reason": user_error})
 
     payload = _read_json()
     title = str(payload.get("title", "")).strip()
@@ -1439,6 +1788,7 @@ def create_todo():
             supabase.table("todos")
             .insert(
                 {
+                    "user_id": user_id,
                     "title": title,
                     "is_done": False,
                     "due_date": due_date,
@@ -1460,13 +1810,16 @@ def create_todo():
 @app.route("/api/todos/<int:todo_id>", methods=["PATCH"])
 def update_todo(todo_id: int):
     supabase = _get_supabase_client()
+    user_id, user_error = _get_request_user_id()
+    if user_error:
+        return _json_error("Unauthorized", 401, {"reason": user_error})
 
     payload = _read_json()
     if "title" not in payload and "isDone" not in payload and "dueDate" not in payload:
         return _json_error("Nothing to update", 400)
 
     try:
-        existing_result = supabase.table("todos").select("*").eq("id", todo_id).limit(1).execute()
+        existing_result = supabase.table("todos").select("*").eq("id", todo_id).eq("user_id", user_id).limit(1).execute()
         existing_rows = existing_result.data or []
         if not existing_rows:
             return _json_error("Todo not found", 404)
@@ -1501,7 +1854,7 @@ def update_todo(todo_id: int):
 
         updates["updated_at"] = _utc_now_iso()
 
-        updated_result = supabase.table("todos").update(updates).eq("id", todo_id).execute()
+        updated_result = supabase.table("todos").update(updates).eq("id", todo_id).eq("user_id", user_id).execute()
         updated_rows = updated_result.data or []
         if not updated_rows:
             return _json_error("Todo update failed", 500)
@@ -1514,14 +1867,17 @@ def update_todo(todo_id: int):
 @app.route("/api/todos/<int:todo_id>", methods=["DELETE"])
 def delete_todo(todo_id: int):
     supabase = _get_supabase_client()
+    user_id, user_error = _get_request_user_id()
+    if user_error:
+        return _json_error("Unauthorized", 401, {"reason": user_error})
 
     try:
-        existing_result = supabase.table("todos").select("id").eq("id", todo_id).limit(1).execute()
+        existing_result = supabase.table("todos").select("id").eq("id", todo_id).eq("user_id", user_id).limit(1).execute()
         existing_rows = existing_result.data or []
         if not existing_rows:
             return _json_error("Todo not found", 404)
 
-        supabase.table("todos").delete().eq("id", todo_id).execute()
+        supabase.table("todos").delete().eq("id", todo_id).eq("user_id", user_id).execute()
         return jsonify({"ok": True})
     except Exception as exc:
         return _json_error("Failed to delete todo", 500, {"reason": str(exc)})
