@@ -15,6 +15,11 @@ eggs/
 .eggs/
 lib/
 lib64/
+
+# Keep frontend source helpers tracked even with broad Python lib ignore.
+!src/lib/
+!src/lib/**
+
 parts/
 sdist/
 var/
