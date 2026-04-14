@@ -4,19 +4,23 @@ FocusBuddy is a productivity web app with a static frontend and a Python Flask b
 
 ## Current Stack
 
-- Frontend: Static HTML/CSS/JavaScript in `frontend/`
+- Frontend: React + Vite + Tailwind (`src/`)
 - Backend: Flask app in `api/index.py`
 - Database: Supabase (Postgres)
-- Deployment routing: `vercel.json` rewrites `/api/*` to `api/index.py`
+- Deployment routing: `vercel.json` routes `/api/*` to `api/index.py` and serves SPA from `dist/`
 
 ## Project Structure
 
 ```
 Focus Buddy/
+├── src/
+│   ├── App.jsx
+│   ├── main.jsx
+│   ├── index.css
+│   └── components/
+│       └── Dashboard.jsx
 ├── api/
 │   ├── .env
-│   ├── ai_config.py
-│   ├── ai_config_local.py
 │   ├── index.py
 │   ├── requirements.txt
 │   └── schema.sql
@@ -25,9 +29,12 @@ Focus Buddy/
 │   ├── todo.html
 │   ├── history.html
 │   ├── calendar.html
-│   ├── ai_summarizer.html
-│   ├── interactive-bg.css
-│   └── interactive-bg.js
+│   └── ai_summarizer.html
+├── index.html
+├── package.json
+├── vite.config.js
+├── tailwind.config.js
+├── postcss.config.js
 ├── vercel.json
 ├── LICENSE
 └── readme.md
@@ -35,11 +42,11 @@ Focus Buddy/
 
 ## Features
 
-- Focus timer and focus session tracking
-- Focus history analytics
-- Todo management with due dates
-- Calendar view
-- AI summarizer with provider inference and local fallback
+- Focus dashboard with Aria command routing
+- Focus history analytics (React route)
+- Todo management with due dates + Microsoft To Do mode (React route)
+- Calendar view with holiday overlay (React route)
+- AI summarizer with provider inference and local fallback (React route)
 
 ## API Routes
 
@@ -83,8 +90,8 @@ SUPABASE_SERVICE_ROLE_KEY=your_legacy_jwt_service_role_key
 
 Optional variables:
 
-- `AI_API_KEY` or `OPENROUTER_API_KEY`
-- `AI_PROVIDER` (`openai`, `openrouter`, `gemini`, `claude`)
+- `OPENROUTER_API_KEY`
+- `AI_PROVIDER` (`openrouter`)
 - `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`
 - `AZURE_AUTH_REDIRECT_URI` (optional; defaults to `{host}/api/auth/microsoft/callback`)
 - `AZURE_DELEGATED_SCOPES` (optional; default `Tasks.ReadWrite`)
@@ -118,20 +125,23 @@ pip install -r requirements.txt
 python index.py
 ```
 
-3. Serve frontend:
+3. Install frontend dependencies:
 
 ```bash
-cd ../frontend
-python -m http.server 5500
+npm install
 ```
 
-4. Open app:
+4. Start Vite frontend:
+
+```bash
+npm run dev
+```
+
+5. Open app:
 
 ```text
-http://localhost:5500/index.html
+http://localhost:5173
 ```
-
-If frontend and backend run on different origins locally, ensure requests target the backend URL (for example `http://127.0.0.1:5000/api/...`).
 
 ## Troubleshooting
 
