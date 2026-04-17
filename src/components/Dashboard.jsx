@@ -28,6 +28,31 @@ function parseFallbackTasks(payload) {
   return [];
 }
 
+function getSpeechRecognitionCtor() {
+  return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+}
+
+function normalizeSpeech(text) {
+  return String(text || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s']/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function stripWakeWord(transcript) {
+  const original = String(transcript || "").trim();
+  const normalized = normalizeSpeech(original);
+  const wakePhrase = "hey cipher";
+  const wakeIndex = normalized.indexOf(wakePhrase);
+
+  if (wakeIndex === -1) {
+    return "";
+  }
+
+  return original.replace(/^[\s,.:;!?-]*hey\s+cipher[\s,.:;!?-]*/i, "").trim();
+}
+
 export default function Dashboard() {
   const [tasks, setTasks] = useState([]);
   const [feed, setFeed] = useState([
@@ -43,7 +68,14 @@ export default function Dashboard() {
   const [remainingSeconds, setRemainingSeconds] = useState(25 * 60);
   const [isRunning, setIsRunning] = useState(false);
   const [isBusy, setIsBusy] = useState(false);
+  const [wakeWordEnabled, setWakeWordEnabled] = useState(false);
+  const [wakeWordStatus, setWakeWordStatus] = useState("Wake word off");
+  const [wakeWordSupported, setWakeWordSupported] = useState(true);
   const inputRef = useRef(null);
+  const recognitionRef = useRef(null);
+  const wakeWordActiveRef = useRef(false);
+  const pendingVoiceCommandRef = useRef("");
+  const restartRecognitionRef = useRef(null);
 
   useEffect(() => {
     setRemainingSeconds(durationMinutes * 60);
@@ -126,9 +158,142 @@ export default function Dashboard() {
     loadTasks();
   }, []);
 
-  const onCommandSubmit = async (event) => {
-    event.preventDefault();
-    const trimmed = command.trim();
+  useEffect(() => {
+    const SpeechRecognition = getSpeechRecognitionCtor();
+    if (!SpeechRecognition) {
+      setWakeWordSupported(false);
+      setWakeWordStatus("Wake word unavailable in this browser");
+      return undefined;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = "en-US";
+
+    recognition.onresult = (event) => {
+      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+        const result = event.results[index];
+        if (!result.isFinal) {
+          continue;
+        }
+
+        const transcript = String(result[0]?.transcript || "").trim();
+        if (!transcript) {
+          continue;
+        }
+
+        if (!wakeWordActiveRef.current) {
+          const voiceCommand = stripWakeWord(transcript);
+          if (!normalizeSpeech(transcript).includes("hey cipher")) {
+            continue;
+          }
+
+          wakeWordActiveRef.current = true;
+          pendingVoiceCommandRef.current = voiceCommand;
+          setWakeWordStatus("Hey Cipher heard. Listening.");
+          setFeed((prevFeed) => [
+            {
+              id: crypto.randomUUID(),
+              role: "cipher",
+              text: "Wake word detected. Listening.",
+              ts: new Date().toISOString(),
+            },
+            ...prevFeed,
+          ]);
+
+          if (voiceCommand) {
+            setCommand(voiceCommand);
+          }
+          continue;
+        }
+
+        pendingVoiceCommandRef.current = [pendingVoiceCommandRef.current, transcript].filter(Boolean).join(" ").trim();
+        if (pendingVoiceCommandRef.current) {
+          setCommand(pendingVoiceCommandRef.current);
+        }
+      }
+    };
+
+    recognition.onend = () => {
+      if (wakeWordEnabled) {
+        if (wakeWordActiveRef.current && pendingVoiceCommandRef.current.trim() && !isBusy) {
+          const voiceCommand = pendingVoiceCommandRef.current.trim();
+          pendingVoiceCommandRef.current = "";
+          wakeWordActiveRef.current = false;
+          setWakeWordStatus("Submitting voice command");
+          window.setTimeout(() => {
+            void submitCipherCommand(voiceCommand);
+          }, 0);
+        }
+
+        restartRecognitionRef.current = window.setTimeout(() => {
+          try {
+            recognition.start();
+            setWakeWordStatus(wakeWordActiveRef.current ? "Listening" : "Waiting for Hey Cipher");
+          } catch (_error) {
+            setWakeWordStatus("Wake word listener paused");
+          }
+        }, 250);
+      }
+    };
+
+    recognition.onerror = (event) => {
+      if (String(event?.error || "").toLowerCase() === "not-allowed") {
+        setWakeWordStatus("Microphone blocked");
+        setWakeWordEnabled(false);
+        wakeWordActiveRef.current = false;
+        pendingVoiceCommandRef.current = "";
+        return;
+      }
+
+      setWakeWordStatus(`Wake word error: ${String(event?.error || "unknown")}`);
+    };
+
+    recognitionRef.current = recognition;
+
+    return () => {
+      if (restartRecognitionRef.current) {
+        window.clearTimeout(restartRecognitionRef.current);
+      }
+      try {
+        recognition.stop();
+      } catch (_error) {
+        // Ignore shutdown errors.
+      }
+      recognitionRef.current = null;
+    };
+  }, [wakeWordEnabled, isBusy]);
+
+  useEffect(() => {
+    if (!wakeWordEnabled || !wakeWordSupported || !recognitionRef.current) {
+      return undefined;
+    }
+
+    wakeWordActiveRef.current = false;
+    pendingVoiceCommandRef.current = "";
+    setWakeWordStatus("Waiting for Hey Cipher");
+
+    try {
+      recognitionRef.current.start();
+    } catch (_error) {
+      setWakeWordStatus("Wake word listener already running");
+    }
+
+    return () => {
+      if (restartRecognitionRef.current) {
+        window.clearTimeout(restartRecognitionRef.current);
+      }
+      try {
+        recognitionRef.current?.stop();
+      } catch (_error) {
+        // Ignore shutdown errors.
+      }
+    };
+  }, [wakeWordEnabled, wakeWordSupported]);
+
+  const submitCipherCommand = async (rawCommand) => {
+    const trimmed = String(rawCommand || "").trim();
     if (!trimmed || isBusy) {
       return;
     }
@@ -192,6 +357,16 @@ export default function Dashboard() {
       setIsBusy(false);
       window.setTimeout(() => inputRef.current?.focus(), 0);
     }
+  };
+
+  const onCommandSubmit = async (event) => {
+    event.preventDefault();
+    const trimmed = command.trim();
+    if (!trimmed || isBusy) {
+      return;
+    }
+
+    await submitCipherCommand(trimmed);
   };
 
   const progressPct = ((durationMinutes * 60 - remainingSeconds) / Math.max(1, durationMinutes * 60)) * 100;
@@ -306,6 +481,17 @@ export default function Dashboard() {
         className="fixed bottom-5 left-1/2 z-30 w-[min(860px,calc(100%-2rem))] -translate-x-1/2"
       >
         <div className="rounded-2xl border border-cyan-300/45 bg-[rgba(255,255,255,0.05)] p-2 backdrop-blur-xl shadow-[0_0_26px_rgba(0,255,255,0.25)] animate-glowPulse">
+          <div className="mb-2 flex items-center justify-between gap-3 px-1 text-[11px] uppercase tracking-[0.18em] text-cyan-100/75">
+            <span>{wakeWordStatus}</span>
+            <button
+              type="button"
+              disabled={!wakeWordSupported}
+              onClick={() => setWakeWordEnabled((prev) => !prev)}
+              className="rounded-full border border-cyan-300/35 bg-cyan-300/10 px-3 py-1 text-[11px] font-semibold text-cyan-100 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {wakeWordEnabled ? "Disable Wake Word" : "Enable Hey Cipher"}
+            </button>
+          </div>
           <div className="flex items-center gap-2">
             <input
               ref={inputRef}
