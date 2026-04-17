@@ -217,14 +217,16 @@ export default function Dashboard() {
 
     recognition.onend = () => {
       if (wakeWordEnabled) {
-        if (wakeWordActiveRef.current && pendingVoiceCommandRef.current.trim() && !isBusy) {
+        if (wakeWordActiveRef.current) {
           const voiceCommand = pendingVoiceCommandRef.current.trim();
+          if (voiceCommand) {
+            setCommand(voiceCommand);
+            setWakeWordStatus("Voice captured. Press Dispatch to send.");
+          } else {
+            setWakeWordStatus("Wake detected, but no command captured.");
+          }
           pendingVoiceCommandRef.current = "";
           wakeWordActiveRef.current = false;
-          setWakeWordStatus("Submitting voice command");
-          window.setTimeout(() => {
-            void submitCipherCommand(voiceCommand);
-          }, 0);
         }
 
         restartRecognitionRef.current = window.setTimeout(() => {
@@ -263,7 +265,7 @@ export default function Dashboard() {
       }
       recognitionRef.current = null;
     };
-  }, [wakeWordEnabled, isBusy]);
+  }, [wakeWordEnabled]);
 
   useEffect(() => {
     if (!wakeWordEnabled || !wakeWordSupported || !recognitionRef.current) {
