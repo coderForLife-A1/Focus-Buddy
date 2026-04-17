@@ -43,6 +43,7 @@ Focus Buddy/
 ## Features
 
 - Focus dashboard with Cipher command routing
+- Hey Cipher wake-word voice listening in the dashboard
 - Focus history analytics (React route)
 - Todo management with due dates + Microsoft To Do mode (React route)
 - Calendar view with holiday overlay (React route)
