@@ -26,6 +26,20 @@ app.config["SESSION_COOKIE_SAMESITE"] = os.getenv("SESSION_COOKIE_SAMESITE", "La
 app.config["SESSION_COOKIE_SECURE"] = (os.getenv("SESSION_COOKIE_SECURE", "false").strip().lower() == "true")
 app.config["SESSION_REFRESH_EACH_REQUEST"] = False
 
+INTENT_MODEL = "meta-llama/llama-3.1-8b-instruct:free"
+SUMMARIZE_MODEL = "qwen/qwen3.6-plus:free"
+HUMANIZE_MODEL = "arcee-ai/trinity-large-preview:free"
+CHAT_MODEL = "meta-llama/llama-3.1-8b-instruct:free"
+OPENROUTER_FREE_MODEL = "openrouter/free"
+
+CIPHER_PERSONA_PROMPT = (
+    "You are Cipher, a brutally honest and logical engineering mentor. "
+    "Be direct, concise, and actionable. No fluff. No motivational filler. "
+    "Do not say phrases like 'I'm happy to help'. "
+    "If the user is procrastinating, avoiding execution, or wasting time, call it out clearly "
+    "and redirect them to the next concrete step."
+)
+
 _microsoft_token_cache: Dict[str, Dict[str, Any]] = {}
 _MICROSOFT_SESSION_TABLE = "microsoft_auth_sessions"
 
@@ -163,11 +177,90 @@ def _infer_ai_provider(api_key: str) -> str:
 
 
 def _get_ai_api_key() -> str:
-    openrouter_key = os.getenv("OPENROUTER_API_KEY", "").strip()
+    openrouter_key = (os.environ.get("OPENROUTER_API_KEY") or "").strip()
     if openrouter_key:
         return openrouter_key
 
     return ""
+
+
+def _openrouter_chat_completion_with_fallback(
+    api_key: str,
+    primary_model: str,
+    messages: list[Dict[str, str]],
+    temperature: float = 0.2,
+    max_tokens: int = 512,
+) -> Tuple[str, str, bool]:
+    try:
+        content = _openrouter_chat_completion(
+            api_key=api_key,
+            model=primary_model,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        return content, primary_model, False
+    except Exception as primary_exc:
+        try:
+            content = _openrouter_chat_completion(
+                api_key=api_key,
+                model=OPENROUTER_FREE_MODEL,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+            return content, OPENROUTER_FREE_MODEL, True
+        except Exception as fallback_exc:
+            attempts = [
+                {
+                    "model": primary_model,
+                    "type": "model_error",
+                    "reason": str(primary_exc),
+                },
+                {
+                    "model": OPENROUTER_FREE_MODEL,
+                    "type": "model_error",
+                    "reason": str(fallback_exc),
+                },
+            ]
+            raise OpenRouterFallbackError(attempts) from fallback_exc
+
+
+def _extract_task_context_text(payload: Dict[str, Any]) -> str:
+    task_sources = []
+    for key in ("tasks", "todos", "microsoftTasks", "taskData"):
+        value = payload.get(key)
+        if isinstance(value, list):
+            task_sources.extend(value)
+
+    if not task_sources:
+        nested = payload.get("data")
+        if isinstance(nested, dict):
+            for key in ("tasks", "todos"):
+                value = nested.get(key)
+                if isinstance(value, list):
+                    task_sources.extend(value)
+
+    lines = []
+    for item in task_sources[:25]:
+        if isinstance(item, dict):
+            title = str(item.get("title") or item.get("name") or "").strip()
+            if not title:
+                continue
+            done = bool(item.get("isDone") or item.get("completed") or item.get("status") == "completed")
+            due = str(item.get("dueDate") or item.get("due_date") or item.get("due") or "").strip()
+            state = "done" if done else "open"
+            due_part = f", due {due}" if due else ""
+            lines.append(f"- {title} ({state}{due_part})")
+        elif isinstance(item, str):
+            title = item.strip()
+            if title:
+                lines.append(f"- {title}")
+
+    if not lines:
+        return ""
+
+    return "Microsoft To-Do task context:\n" + "\n".join(lines)
 
 
 class OpenRouterFallbackError(Exception):
@@ -440,10 +533,10 @@ def _openrouter_chat_completion(
     return final_content
 
 
-def _route_aria_intent(message_text: str, api_key: str) -> str:
-    raw_intent = _openrouter_chat_completion(
+def _route_aria_intent(message_text: str, api_key: str) -> Tuple[str, str, bool]:
+    raw_intent, model_used, used_fallback = _openrouter_chat_completion_with_fallback(
         api_key=api_key,
-        model="meta-llama/llama-3.1-8b-instruct:free",
+        primary_model=INTENT_MODEL,
         temperature=0.0,
         max_tokens=12,
         messages=[
@@ -451,20 +544,41 @@ def _route_aria_intent(message_text: str, api_key: str) -> str:
                 "role": "system",
                 "content": (
                     "Classify user intent and return exactly one token: "
-                    "[CHAT], [SUMMARIZE], [HUMANIZE], or [TIMER]."
+                    "[CHAT], [COACH], [SUMMARIZE], [HUMANIZE], or [TIMER]."
                 ),
             },
             {"role": "user", "content": message_text},
         ],
-    ).strip().upper()
+    )
+    raw_intent = raw_intent.strip().upper()
 
     if "SUMMARIZE" in raw_intent:
-        return "[SUMMARIZE]"
+        return "[SUMMARIZE]", model_used, used_fallback
     if "HUMANIZE" in raw_intent:
-        return "[HUMANIZE]"
+        return "[HUMANIZE]", model_used, used_fallback
+    if "COACH" in raw_intent:
+        return "[COACH]", model_used, used_fallback
     if "TIMER" in raw_intent:
-        return "[TIMER]"
-    return "[CHAT]"
+        return "[TIMER]", model_used, used_fallback
+    return "[CHAT]", model_used, used_fallback
+
+
+def _detect_cipher_intent(message_text: str, api_key: str) -> Dict[str, Any]:
+    if api_key:
+        intent, model_used, used_fallback = _route_aria_intent(message_text, api_key)
+        return {
+            "intent": intent,
+            "usedFallback": used_fallback,
+            "provider": "openrouter",
+            "modelUsed": model_used,
+        }
+
+    return {
+        "intent": _rule_based_intent(message_text),
+        "usedFallback": True,
+        "provider": "local",
+        "modelUsed": "rule-based",
+    }
 
 
 def _rule_based_intent(message_text: str) -> str:
@@ -473,9 +587,37 @@ def _rule_based_intent(message_text: str) -> str:
         return "[SUMMARIZE]"
     if any(keyword in text for keyword in ["humanize", "rewrite", "natural", "friendlier"]):
         return "[HUMANIZE]"
+    if any(keyword in text for keyword in ["coach", "coaching", "mentor", "guide", "advice", "help me plan"]):
+        return "[COACH]"
     if any(keyword in text for keyword in ["timer", "focus", "pomodoro", "countdown", "start for"]):
         return "[TIMER]"
     return "[CHAT]"
+
+
+def _summarize_with_model(api_key: str, text: str, ratio_percent: float, model: str) -> Tuple[str, str, bool]:
+    sentences = _split_sentences(text)
+    sentence_goal = max(1, min(12, round((ratio_percent / 100.0) * max(1, len(sentences)))))
+
+    summary_text, model_used, used_fallback = _openrouter_chat_completion_with_fallback(
+        api_key=api_key,
+        primary_model=model,
+        temperature=0.2,
+        max_tokens=650,
+        messages=[
+            {
+                "role": "system",
+                "content": "You are a concise summarizer. Return only the final summary text without headings.",
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"Summarize the following content in about {sentence_goal} sentences. "
+                    f"Keep the most important points and keep it factual.\\n\\n{text}"
+                ),
+            },
+        ],
+    )
+    return summary_text, model_used, used_fallback
 
 
 def _fallback_sorted_tasks_for_user(user_id: Optional[str]) -> list[Dict[str, Any]]:
@@ -1469,8 +1611,8 @@ def ai_summarize():
         )
 
 
-@app.route("/api/aria", methods=["POST"])
-def aria_command_center():
+@app.route("/api/cipher", methods=["POST"])
+def cipher_command_center():
     payload = _read_json()
     message_text = str(payload.get("message") or payload.get("text") or "").strip()
     if not message_text:
@@ -1478,9 +1620,19 @@ def aria_command_center():
 
     api_key = _get_ai_api_key()
     user_id, _user_error = _get_request_user_id(required=False)
+    task_context = _extract_task_context_text(payload)
+    message_with_context = message_text
+    if task_context:
+        message_with_context = f"{message_text}\n\n{task_context}"
 
     try:
-        intent = _route_aria_intent(message_text, api_key) if api_key else _rule_based_intent(message_text)
+        intent_result = _detect_cipher_intent(message_text, api_key)
+        intent = str(intent_result.get("intent") or "[CHAT]")
+        intent_meta = {
+            "intentProvider": intent_result.get("provider"),
+            "intentModelUsed": intent_result.get("modelUsed"),
+            "intentUsedFallback": bool(intent_result.get("usedFallback")),
+        }
 
         if intent == "[SUMMARIZE]":
             ratio_percent = payload.get("ratioPercent", 25)
@@ -1490,13 +1642,16 @@ def aria_command_center():
                 ratio_percent = 25.0
             ratio_percent = max(10.0, min(50.0, ratio_percent))
 
-            source_text = str(payload.get("text") or payload.get("sourceText") or message_text).strip()
+            source_text = str(payload.get("text") or payload.get("sourceText") or "").strip()
+            if not source_text:
+                source_text = task_context or message_text
             local_summary = _fallback_extract_summary(source_text, ratio_percent)
 
             if not api_key:
                 return jsonify(
                     {
                         "intent": intent,
+                        **intent_meta,
                         "reply": local_summary["summary"],
                         "usedFallback": True,
                         "provider": "local",
@@ -1504,16 +1659,40 @@ def aria_command_center():
                     }
                 )
 
-            ai_summary, model_used = _ai_summarize_with_openrouter(api_key, source_text, ratio_percent)
-            return jsonify(
-                {
-                    "intent": intent,
-                    "reply": ai_summary,
-                    "usedFallback": False,
-                    "provider": "openrouter",
-                    "modelUsed": model_used,
-                }
-            )
+            try:
+                ai_summary, summarize_model_used, summarize_fallback_used = _summarize_with_model(
+                    api_key,
+                    source_text,
+                    ratio_percent,
+                    SUMMARIZE_MODEL,
+                )
+                return jsonify(
+                    {
+                        "intent": intent,
+                        **intent_meta,
+                        "reply": ai_summary,
+                        "usedFallback": False,
+                        "provider": "openrouter",
+                        "modelUsed": summarize_model_used,
+                        "modelFallbackUsed": summarize_fallback_used,
+                    }
+                )
+            except Exception as summarize_exc:
+                return jsonify(
+                    {
+                        "intent": intent,
+                        **intent_meta,
+                        "reply": local_summary["summary"],
+                        "usedFallback": True,
+                        "provider": "local",
+                        "warning": "Qwen summarize failed. Returned local summary.",
+                        "aiError": {
+                            "type": "model_error",
+                            "model": SUMMARIZE_MODEL,
+                            "reason": str(summarize_exc),
+                        },
+                    }
+                )
 
         if intent == "[HUMANIZE]":
             source_text = str(payload.get("text") or message_text).strip()
@@ -1521,6 +1700,7 @@ def aria_command_center():
                 return jsonify(
                     {
                         "intent": intent,
+                        **intent_meta,
                         "reply": source_text,
                         "usedFallback": True,
                         "provider": "local",
@@ -1528,9 +1708,9 @@ def aria_command_center():
                     }
                 )
 
-            humanized = _openrouter_chat_completion(
+            humanized, humanize_model_used, humanize_fallback = _openrouter_chat_completion_with_fallback(
                 api_key=api_key,
-                model="arcee-ai/trinity-large-preview:free",
+                primary_model=HUMANIZE_MODEL,
                 temperature=0.65,
                 max_tokens=700,
                 messages=[
@@ -1544,10 +1724,12 @@ def aria_command_center():
             return jsonify(
                 {
                     "intent": intent,
+                    **intent_meta,
                     "reply": humanized,
                     "usedFallback": False,
                     "provider": "openrouter",
-                    "modelUsed": "arcee-ai/trinity-large-preview:free",
+                    "modelUsed": humanize_model_used,
+                    "modelFallbackUsed": humanize_fallback,
                 }
             )
 
@@ -1556,10 +1738,11 @@ def aria_command_center():
             return jsonify(
                 {
                     "intent": intent,
+                    **intent_meta,
                     "reply": f"Starting a {minutes}-minute focus sprint.",
                     "command": {
-                        "type": "START_TIMER",
-                        "minutes": minutes,
+                        "action": "START_TIMER",
+                        "duration": minutes,
                     },
                 }
             )
@@ -1567,33 +1750,36 @@ def aria_command_center():
         if not api_key:
             return jsonify(
                 {
-                    "intent": "[CHAT]",
-                    "reply": "Aria is running in local mode. Set OPENROUTER_API_KEY for full intelligence.",
+                    "intent": intent,
+                    **intent_meta,
+                    "reply": "Cipher is running in local mode. Set OPENROUTER_API_KEY for full intelligence.",
                     "usedFallback": True,
                     "provider": "local",
                 }
             )
 
-        chat_reply = _openrouter_chat_completion(
+        chat_reply, chat_model_used, chat_fallback_used = _openrouter_chat_completion_with_fallback(
             api_key=api_key,
-            model="meta-llama/llama-3.1-8b-instruct:free",
+            primary_model=CHAT_MODEL,
             temperature=0.45,
             max_tokens=700,
             messages=[
                 {
                     "role": "system",
-                    "content": "You are Aria, a concise productivity copilot for developers.",
+                    "content": CIPHER_PERSONA_PROMPT,
                 },
-                {"role": "user", "content": message_text},
+                {"role": "user", "content": message_with_context},
             ],
         )
         return jsonify(
             {
-                "intent": "[CHAT]",
+                "intent": intent,
+                **intent_meta,
                 "reply": chat_reply,
                 "usedFallback": False,
                 "provider": "openrouter",
-                "modelUsed": "meta-llama/llama-3.1-8b-instruct:free",
+                "modelUsed": chat_model_used,
+                "modelFallbackUsed": chat_fallback_used,
             }
         )
     except Exception as exc:
@@ -1607,12 +1793,46 @@ def aria_command_center():
         return jsonify(
             {
                 "intent": "[CHAT]",
+                "intentProvider": "local",
+                "intentModelUsed": "rule-based",
+                "intentUsedFallback": True,
                 "usedFallback": True,
                 "provider": "local",
-                "reply": "Aria AI is temporarily unavailable. Returning locally sorted tasks.",
+                "reply": "Cipher AI is temporarily unavailable. Returning locally sorted tasks.",
                 "tasks": fallback_sorted_tasks,
                 "fallbackReason": str(exc),
                 "fallbackError": fallback_error,
+            }
+        )
+
+
+@app.route("/api/cipher/intent", methods=["POST"])
+def cipher_intent():
+    payload = _read_json()
+    message_text = str(payload.get("message") or payload.get("text") or "").strip()
+    if not message_text:
+        return _json_error("message is required", 400)
+
+    api_key = _get_ai_api_key()
+
+    try:
+        result = _detect_cipher_intent(message_text, api_key)
+        return jsonify(
+            {
+                "intent": result["intent"],
+                "usedFallback": result["usedFallback"],
+                "provider": result["provider"],
+                "modelUsed": result["modelUsed"],
+            }
+        )
+    except Exception as exc:
+        return jsonify(
+            {
+                "intent": _rule_based_intent(message_text),
+                "usedFallback": True,
+                "provider": "local",
+                "modelUsed": "rule-based",
+                "fallbackReason": str(exc),
             }
         )
 

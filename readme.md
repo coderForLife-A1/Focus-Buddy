@@ -42,7 +42,7 @@ Focus Buddy/
 
 ## Features
 
-- Focus dashboard with Aria command routing
+- Focus dashboard with Cipher command routing
 - Focus history analytics (React route)
 - Todo management with due dates + Microsoft To Do mode (React route)
 - Calendar view with holiday overlay (React route)
@@ -57,6 +57,8 @@ All backend routes are exposed under `/api`:
 - GET `/api/ai-config`
 - GET `/api/graph-auth`
 - POST `/api/ai-summarize`
+- POST `/api/cipher`
+- POST `/api/cipher/intent` (intent classification via `meta-llama/llama-3.1-8b-instruct:free`)
 - GET `/api/focus-sessions`
 - POST `/api/focus-sessions`
 - DELETE `/api/focus-sessions`

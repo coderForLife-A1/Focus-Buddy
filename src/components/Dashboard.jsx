@@ -33,8 +33,8 @@ export default function Dashboard() {
   const [feed, setFeed] = useState([
     {
       id: "boot-1",
-      role: "aria",
-      text: "Aria online. Ask for summaries, humanized text, or timer commands.",
+      role: "cipher",
+      text: "Cipher online. Ask for summaries, humanized text, or timer commands.",
       ts: new Date().toISOString(),
     },
   ]);
@@ -62,7 +62,7 @@ export default function Dashboard() {
           setFeed((prevFeed) => [
             {
               id: crypto.randomUUID(),
-              role: "aria",
+              role: "cipher",
               text: "Focus sprint complete. Take a short break and stretch.",
               ts: new Date().toISOString(),
             },
@@ -84,7 +84,7 @@ export default function Dashboard() {
         setFeed((prevFeed) => [
           {
             id: crypto.randomUUID(),
-            role: "aria",
+            role: "cipher",
             text: "Tab-Sentry: timer paused. Stay in this tab to keep your focus streak alive.",
             ts: new Date().toISOString(),
           },
@@ -114,7 +114,7 @@ export default function Dashboard() {
         setFeed((prevFeed) => [
           {
             id: crypto.randomUUID(),
-            role: "aria",
+            role: "cipher",
             text: `Task sync failed: ${err.message}`,
             ts: new Date().toISOString(),
           },
@@ -146,17 +146,18 @@ export default function Dashboard() {
     setIsBusy(true);
 
     try {
-      const { response, payload } = await apiFetch("/api/aria", {
+      const { response, payload } = await apiFetch("/api/cipher", {
         method: "POST",
         body: JSON.stringify({ message: trimmed, text: trimmed, timerMinutes: durationMinutes }),
       });
 
       if (!response.ok) {
-        throw new Error(payload?.error || "Aria request failed");
+        throw new Error(payload?.error || "Cipher request failed");
       }
 
-      if (payload?.intent === "[TIMER]" && payload?.command?.type === "START_TIMER") {
-        const minutes = Number(payload?.command?.minutes || durationMinutes);
+      const timerAction = String(payload?.command?.action || payload?.command?.type || "").toUpperCase();
+      if (payload?.intent === "[TIMER]" && timerAction === "START_TIMER") {
+        const minutes = Number(payload?.command?.duration || payload?.command?.minutes || durationMinutes);
         const safeMinutes = Number.isFinite(minutes) ? Math.max(1, Math.min(240, minutes)) : 25;
         setDurationMinutes(safeMinutes);
         setRemainingSeconds(safeMinutes * 60);
@@ -171,8 +172,8 @@ export default function Dashboard() {
       setFeed((prevFeed) => [
         {
           id: crypto.randomUUID(),
-          role: "aria",
-          text: String(payload?.reply || "Aria returned no response."),
+          role: "cipher",
+          text: String(payload?.reply || "Cipher returned no response."),
           ts: new Date().toISOString(),
         },
         ...prevFeed,
@@ -181,8 +182,8 @@ export default function Dashboard() {
       setFeed((prevFeed) => [
         {
           id: crypto.randomUUID(),
-          role: "aria",
-          text: `Aria error: ${err.message}`,
+          role: "cipher",
+          text: `Cipher error: ${err.message}`,
           ts: new Date().toISOString(),
         },
         ...prevFeed,
@@ -219,9 +220,8 @@ export default function Dashboard() {
                   <div className="flex items-center justify-between gap-2">
                     <p className={task.isDone ? "text-zinc-500 line-through" : "text-zinc-100"}>{task.title}</p>
                     <span
-                      className={`rounded-full px-2 py-0.5 text-[11px] ${
-                        task.isDone ? "bg-zinc-700 text-zinc-300" : "bg-cyan-400/20 text-cyan-200"
-                      }`}
+                      className={`rounded-full px-2 py-0.5 text-[11px] ${task.isDone ? "bg-zinc-700 text-zinc-300" : "bg-cyan-400/20 text-cyan-200"
+                        }`}
                     >
                       {task.isDone ? "Done" : "Open"}
                     </span>
@@ -286,7 +286,7 @@ export default function Dashboard() {
         </section>
 
         <section className={`${GLASS_PANEL} p-5 md:col-span-3`}>
-          <h2 className="mb-3 text-sm uppercase tracking-[0.22em] text-cyan-200/80">Aria Intelligence</h2>
+          <h2 className="mb-3 text-sm uppercase tracking-[0.22em] text-cyan-200/80">Cipher Intelligence</h2>
           <div className="space-y-2 overflow-y-auto pr-1" style={{ maxHeight: "68vh" }}>
             {feed.map((entry) => (
               <article
@@ -311,7 +311,7 @@ export default function Dashboard() {
               ref={inputRef}
               value={command}
               onChange={(event) => setCommand(event.target.value)}
-              placeholder="Aria Command Bar: summarize this PRD, humanize this update, start 50 min timer..."
+              placeholder="Cipher Command Bar: summarize this PRD, humanize this update, start 50 min timer..."
               className="h-12 flex-1 rounded-xl border border-white/15 bg-black/30 px-4 text-sm text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-cyan-300/70"
             />
             <button
