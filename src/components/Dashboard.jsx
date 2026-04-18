@@ -68,8 +68,7 @@ export default function Dashboard() {
   const [remainingSeconds, setRemainingSeconds] = useState(25 * 60);
   const [isRunning, setIsRunning] = useState(false);
   const [isBusy, setIsBusy] = useState(false);
-  const [wakeWordEnabled, setWakeWordEnabled] = useState(false);
-  const [wakeWordStatus, setWakeWordStatus] = useState("Wake word off");
+  const [wakeWordStatus, setWakeWordStatus] = useState("Waiting for Hey Cipher");
   const [wakeWordSupported, setWakeWordSupported] = useState(true);
   const inputRef = useRef(null);
   const recognitionRef = useRef(null);
@@ -216,28 +215,26 @@ export default function Dashboard() {
     };
 
     recognition.onend = () => {
-      if (wakeWordEnabled) {
-        if (wakeWordActiveRef.current) {
-          const voiceCommand = pendingVoiceCommandRef.current.trim();
-          if (voiceCommand) {
-            setCommand(voiceCommand);
-            setWakeWordStatus("Voice captured. Press Dispatch to send.");
-          } else {
-            setWakeWordStatus("Wake detected, but no command captured.");
-          }
-          pendingVoiceCommandRef.current = "";
-          wakeWordActiveRef.current = false;
+      if (wakeWordActiveRef.current) {
+        const voiceCommand = pendingVoiceCommandRef.current.trim();
+        if (voiceCommand) {
+          setCommand(voiceCommand);
+          setWakeWordStatus("Voice captured. Press Dispatch to send.");
+        } else {
+          setWakeWordStatus("Wake detected, but no command captured.");
         }
-
-        restartRecognitionRef.current = window.setTimeout(() => {
-          try {
-            recognition.start();
-            setWakeWordStatus(wakeWordActiveRef.current ? "Listening" : "Waiting for Hey Cipher");
-          } catch (_error) {
-            setWakeWordStatus("Wake word listener paused");
-          }
-        }, 250);
+        pendingVoiceCommandRef.current = "";
+        wakeWordActiveRef.current = false;
       }
+
+      restartRecognitionRef.current = window.setTimeout(() => {
+        try {
+          recognition.start();
+          setWakeWordStatus(wakeWordActiveRef.current ? "Listening" : "Waiting for Hey Cipher");
+        } catch (_error) {
+          setWakeWordStatus("Wake word listener paused");
+        }
+      }, 250);
     };
 
     recognition.onerror = (event) => {
@@ -254,6 +251,13 @@ export default function Dashboard() {
 
     recognitionRef.current = recognition;
 
+    try {
+      recognition.start();
+      setWakeWordStatus("Waiting for Hey Cipher");
+    } catch (_error) {
+      setWakeWordStatus("Wake word listener paused");
+    }
+
     return () => {
       if (restartRecognitionRef.current) {
         window.clearTimeout(restartRecognitionRef.current);
@@ -265,34 +269,7 @@ export default function Dashboard() {
       }
       recognitionRef.current = null;
     };
-  }, [wakeWordEnabled]);
-
-  useEffect(() => {
-    if (!wakeWordEnabled || !wakeWordSupported || !recognitionRef.current) {
-      return undefined;
-    }
-
-    wakeWordActiveRef.current = false;
-    pendingVoiceCommandRef.current = "";
-    setWakeWordStatus("Waiting for Hey Cipher");
-
-    try {
-      recognitionRef.current.start();
-    } catch (_error) {
-      setWakeWordStatus("Wake word listener already running");
-    }
-
-    return () => {
-      if (restartRecognitionRef.current) {
-        window.clearTimeout(restartRecognitionRef.current);
-      }
-      try {
-        recognitionRef.current?.stop();
-      } catch (_error) {
-        // Ignore shutdown errors.
-      }
-    };
-  }, [wakeWordEnabled, wakeWordSupported]);
+  }, [wakeWordSupported]);
 
   const submitCipherCommand = async (rawCommand) => {
     const trimmed = String(rawCommand || "").trim();
@@ -485,14 +462,9 @@ export default function Dashboard() {
         <div className="rounded-2xl border border-cyan-300/45 bg-[rgba(255,255,255,0.05)] p-2 backdrop-blur-xl shadow-[0_0_26px_rgba(0,255,255,0.25)] animate-glowPulse">
           <div className="mb-2 flex items-center justify-between gap-3 px-1 text-[11px] uppercase tracking-[0.18em] text-cyan-100/75">
             <span>{wakeWordStatus}</span>
-            <button
-              type="button"
-              disabled={!wakeWordSupported}
-              onClick={() => setWakeWordEnabled((prev) => !prev)}
-              className="rounded-full border border-cyan-300/35 bg-cyan-300/10 px-3 py-1 text-[11px] font-semibold text-cyan-100 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {wakeWordEnabled ? "Disable Wake Word" : "Enable Hey Cipher"}
-            </button>
+            <span className="rounded-full border border-cyan-300/35 bg-cyan-300/10 px-3 py-1 text-[11px] font-semibold text-cyan-100">
+              {wakeWordSupported ? "Hey Cipher armed" : "Wake word unavailable"}
+            </span>
           </div>
           <div className="flex items-center gap-2">
             <input
