@@ -26,10 +26,10 @@ app.config["SESSION_COOKIE_SAMESITE"] = os.getenv("SESSION_COOKIE_SAMESITE", "La
 app.config["SESSION_COOKIE_SECURE"] = (os.getenv("SESSION_COOKIE_SECURE", "false").strip().lower() == "true")
 app.config["SESSION_REFRESH_EACH_REQUEST"] = False
 
-INTENT_MODEL = "meta-llama/llama-3.1-8b-instruct:free"
+INTENT_MODEL = "openrouter/free"
 SUMMARIZE_MODEL = "qwen/qwen3.6-plus:free"
 HUMANIZE_MODEL = "arcee-ai/trinity-large-preview:free"
-CHAT_MODEL = "meta-llama/llama-3.1-8b-instruct:free"
+CHAT_MODEL = "openrouter/free"
 OPENROUTER_FREE_MODEL = "openrouter/free"
 
 CIPHER_PERSONA_PROMPT = (
@@ -566,6 +566,11 @@ def _route_aria_intent(message_text: str, api_key: str) -> Tuple[str, str, bool]
 def _detect_cipher_intent(message_text: str, api_key: str) -> Dict[str, Any]:
     if api_key:
         intent, model_used, used_fallback = _route_aria_intent(message_text, api_key)
+        # If model routing is uncertain, prefer deterministic keyword routing
+        # for known command-style intents (timer/summarize/humanize/coach).
+        rule_intent = _rule_based_intent(message_text)
+        if intent == "[CHAT]" and rule_intent != "[CHAT]":
+            intent = rule_intent
         return {
             "intent": intent,
             "usedFallback": used_fallback,
@@ -1626,13 +1631,25 @@ def cipher_command_center():
         message_with_context = f"{message_text}\n\n{task_context}"
 
     try:
-        intent_result = _detect_cipher_intent(message_text, api_key)
+        try:
+            intent_result = _detect_cipher_intent(message_text, api_key)
+        except Exception as intent_exc:
+            intent_result = {
+                "intent": _rule_based_intent(message_text),
+                "provider": "local",
+                "modelUsed": "rule-based",
+                "usedFallback": True,
+                "intentError": str(intent_exc),
+            }
+
         intent = str(intent_result.get("intent") or "[CHAT]")
         intent_meta = {
             "intentProvider": intent_result.get("provider"),
             "intentModelUsed": intent_result.get("modelUsed"),
             "intentUsedFallback": bool(intent_result.get("usedFallback")),
         }
+        if intent_result.get("intentError"):
+            intent_meta["intentError"] = intent_result.get("intentError")
 
         if intent == "[SUMMARIZE]":
             ratio_percent = payload.get("ratioPercent", 25)
@@ -1758,30 +1775,42 @@ def cipher_command_center():
                 }
             )
 
-        chat_reply, chat_model_used, chat_fallback_used = _openrouter_chat_completion_with_fallback(
-            api_key=api_key,
-            primary_model=CHAT_MODEL,
-            temperature=0.45,
-            max_tokens=700,
-            messages=[
+        try:
+            chat_reply, chat_model_used, chat_fallback_used = _openrouter_chat_completion_with_fallback(
+                api_key=api_key,
+                primary_model=CHAT_MODEL,
+                temperature=0.45,
+                max_tokens=700,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": CIPHER_PERSONA_PROMPT,
+                    },
+                    {"role": "user", "content": message_with_context},
+                ],
+            )
+            return jsonify(
                 {
-                    "role": "system",
-                    "content": CIPHER_PERSONA_PROMPT,
-                },
-                {"role": "user", "content": message_with_context},
-            ],
-        )
-        return jsonify(
-            {
-                "intent": intent,
-                **intent_meta,
-                "reply": chat_reply,
-                "usedFallback": False,
-                "provider": "openrouter",
-                "modelUsed": chat_model_used,
-                "modelFallbackUsed": chat_fallback_used,
-            }
-        )
+                    "intent": intent,
+                    **intent_meta,
+                    "reply": chat_reply,
+                    "usedFallback": False,
+                    "provider": "openrouter",
+                    "modelUsed": chat_model_used,
+                    "modelFallbackUsed": chat_fallback_used,
+                }
+            )
+        except Exception as chat_exc:
+            return jsonify(
+                {
+                    "intent": intent,
+                    **intent_meta,
+                    "reply": "Cipher AI is temporarily unavailable. Use timer/summarize/humanize commands, or retry in a few seconds.",
+                    "usedFallback": True,
+                    "provider": "local",
+                    "fallbackReason": str(chat_exc),
+                }
+            )
     except Exception as exc:
         fallback_sorted_tasks = []
         fallback_error = None

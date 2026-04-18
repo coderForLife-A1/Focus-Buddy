@@ -240,7 +240,7 @@ export default function Dashboard() {
     recognition.onerror = (event) => {
       if (String(event?.error || "").toLowerCase() === "not-allowed") {
         setWakeWordStatus("Microphone blocked");
-        setWakeWordEnabled(false);
+        setWakeWordSupported(false);
         wakeWordActiveRef.current = false;
         pendingVoiceCommandRef.current = "";
         return;
