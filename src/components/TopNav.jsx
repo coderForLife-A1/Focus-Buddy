@@ -2,8 +2,8 @@ import { NavLink } from "react-router-dom";
 
 const tabs = [
   { to: "/", label: "Dashboard" },
-  { to: "/todo", label: "To-Do" },
   { to: "/history", label: "History" },
+  { to: "/todo", label: "To-Do" },
   { to: "/calendar", label: "Calendar" },
   { to: "/summarizer", label: "Summarizer" },
 ];
