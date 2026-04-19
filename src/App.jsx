@@ -26,6 +26,21 @@ function ResetIntroRoute() {
 }
 
 export default function App() {
+  useEffect(() => {
+    const resetOnExit = () => {
+      resetScramblePlayed();
+    };
+
+    window.addEventListener("beforeunload", resetOnExit);
+    window.addEventListener("pagehide", resetOnExit);
+
+    return () => {
+      window.removeEventListener("beforeunload", resetOnExit);
+      window.removeEventListener("pagehide", resetOnExit);
+      resetOnExit();
+    };
+  }, []);
+
   return (
     <BrowserRouter>
       <TopNav />
