@@ -1,6 +1,7 @@
-import { Suspense, lazy } from "react";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { useEffect, Suspense, lazy } from "react";
+import { BrowserRouter, Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import TopNav from "./components/TopNav";
+import { resetScramblePlayed } from "./lib/scramble";
 
 const Dashboard = lazy(() => import("./components/Dashboard"));
 const VelocityDashboard = lazy(() => import("./components/VelocityDashboard"));
@@ -8,6 +9,21 @@ const TodoPage = lazy(() => import("./pages/TodoPage"));
 const HistoryPage = lazy(() => import("./pages/HistoryPage"));
 const CalendarPage = lazy(() => import("./pages/CalendarPage"));
 const SummarizerPage = lazy(() => import("./pages/SummarizerPage"));
+
+function ResetIntroRoute() {
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    resetScramblePlayed();
+    const timeout = window.setTimeout(() => {
+      navigate("/", { replace: true });
+    }, 200);
+
+    return () => window.clearTimeout(timeout);
+  }, [navigate]);
+
+  return <Navigate to="/" replace />;
+}
 
 export default function App() {
   return (
@@ -27,6 +43,7 @@ export default function App() {
           <Route path="/history" element={<HistoryPage />} />
           <Route path="/calendar" element={<CalendarPage />} />
           <Route path="/summarizer" element={<SummarizerPage />} />
+          <Route path="/reset-intro" element={<ResetIntroRoute />} />
         </Routes>
       </Suspense>
     </BrowserRouter>
