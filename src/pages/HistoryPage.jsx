@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
+import useDocumentTitleScramble from "../hooks/useDocumentTitleScramble";
 
 const GLASS_PANEL =
   "rounded-3xl border border-white/10 bg-[rgba(255,255,255,0.03)] backdrop-blur-xl shadow-[0_8px_40px_rgba(0,0,0,0.45)]";
@@ -23,6 +24,8 @@ function rateClass(rate) {
 }
 
 export default function HistoryPage() {
+  useDocumentTitleScramble("Focus Buddy | Focus Session History");
+
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [sessions, setSessions] = useState([]);

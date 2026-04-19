@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
+import useDocumentTitleScramble from "../hooks/useDocumentTitleScramble";
 
 const GLASS_PANEL =
   "rounded-3xl border border-white/10 bg-[rgba(255,255,255,0.03)] backdrop-blur-xl shadow-[0_8px_40px_rgba(0,0,0,0.45)]";
@@ -19,6 +20,8 @@ function parseIsoToDateKey(value) {
 }
 
 export default function CalendarPage() {
+  useDocumentTitleScramble("Focus Buddy | Task Calendar");
+
   const [monthDate, setMonthDate] = useState(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
@@ -230,8 +233,8 @@ export default function CalendarPage() {
                           event.type === "holiday"
                             ? "border border-amber-300/55 bg-amber-300/15 text-amber-100"
                             : event.type === "done"
-                            ? "border border-emerald-300/45 bg-emerald-300/12 text-emerald-100"
-                            : "border border-cyan-300/45 bg-cyan-300/12 text-cyan-100",
+                              ? "border border-emerald-300/45 bg-emerald-300/12 text-emerald-100"
+                              : "border border-cyan-300/45 bg-cyan-300/12 text-cyan-100",
                         ].join(" ")}
                         title={event.text}
                       >

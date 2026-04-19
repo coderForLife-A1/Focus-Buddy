@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
+import useDocumentTitleScramble from "../hooks/useDocumentTitleScramble";
 
 const GLASS_PANEL =
   "rounded-3xl border border-white/10 bg-[rgba(255,255,255,0.03)] backdrop-blur-xl shadow-[0_8px_40px_rgba(0,0,0,0.45)]";
@@ -12,6 +13,8 @@ function titleForMode(mode, authenticated) {
 }
 
 export default function TodoPage() {
+  useDocumentTitleScramble("Focus Buddy | Task Manager");
+
   const [todos, setTodos] = useState([]);
   const [todoMode, setTodoMode] = useState("local");
   const [status, setStatus] = useState("Loading tasks...");
