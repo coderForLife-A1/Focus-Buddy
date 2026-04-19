@@ -20,7 +20,7 @@ function buildScrambleFrame(target, revealCount) {
 
 export default function TextScramble({
     text,
-    duration = 800,
+    duration = 2800,
     className = "",
     as: Component = "span",
 }) {

@@ -542,13 +542,13 @@ export default function Dashboard() {
 
       <motion.form
         onSubmit={onCommandSubmit}
-        className="fixed bottom-5 left-1/2 z-30 w-[min(860px,calc(100%-2rem))] -translate-x-1/2"
+        className="fixed bottom-5 inset-x-0 z-30 flex justify-center px-4"
         variants={commandBarVariants}
         initial="hidden"
         animate="visible"
         onAnimationComplete={handleCommandBarIntroComplete}
       >
-        <div className="relative overflow-hidden rounded-2xl border border-cyan-300/45 bg-[rgba(255,255,255,0.05)] p-2 backdrop-blur-xl shadow-[0_0_26px_rgba(0,255,255,0.25)]">
+        <div className="relative w-full max-w-[860px] overflow-hidden rounded-2xl border border-cyan-300/45 bg-[rgba(255,255,255,0.05)] p-2 backdrop-blur-xl shadow-[0_0_26px_rgba(0,255,255,0.25)]">
           {canRunCommandBarScan ? (
             <span
               aria-hidden="true"
