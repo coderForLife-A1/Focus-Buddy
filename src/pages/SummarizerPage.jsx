@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
+import useDocumentTitleScramble from "../hooks/useDocumentTitleScramble";
 
 let pdfJsModulePromise = null;
 let jsPdfModulePromise = null;
@@ -60,6 +61,8 @@ async function extractTextFromPdf(file) {
 }
 
 export default function SummarizerPage() {
+  useDocumentTitleScramble("Focus Buddy | AI Summarizer");
+
   const [file, setFile] = useState(null);
   const [textInput, setTextInput] = useState("");
   const [ratio, setRatio] = useState(25);

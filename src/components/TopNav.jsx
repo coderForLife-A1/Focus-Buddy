@@ -1,4 +1,5 @@
 import { NavLink } from "react-router-dom";
+import TextScramble from "./TextScramble";
 
 const tabs = [
   { to: "/", label: "Dashboard" },
@@ -25,7 +26,7 @@ export default function TopNav() {
             ].join(" ")
           }
         >
-          {tab.label}
+          <TextScramble text={tab.label.toUpperCase()} />
         </NavLink>
       ))}
     </nav>
