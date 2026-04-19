@@ -3,6 +3,7 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 import TopNav from "./components/TopNav";
 
 const Dashboard = lazy(() => import("./components/Dashboard"));
+const VelocityDashboard = lazy(() => import("./components/VelocityDashboard"));
 const TodoPage = lazy(() => import("./pages/TodoPage"));
 const HistoryPage = lazy(() => import("./pages/HistoryPage"));
 const CalendarPage = lazy(() => import("./pages/CalendarPage"));
@@ -21,6 +22,7 @@ export default function App() {
       >
         <Routes>
           <Route path="/" element={<Dashboard />} />
+          <Route path="/velocity" element={<VelocityDashboard />} />
           <Route path="/todo" element={<TodoPage />} />
           <Route path="/history" element={<HistoryPage />} />
           <Route path="/calendar" element={<CalendarPage />} />
