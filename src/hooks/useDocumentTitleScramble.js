@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from "react";
+import { hasPlayedScramble, markScramblePlayed } from "../lib/scramble";
 
 const SCRAMBLE_CHARS = "!@#$%*&";
-const SCRAMBLE_SESSION_KEY = "cipher-text-scramble-played-v1";
 
 function randomChar() {
     return SCRAMBLE_CHARS[Math.floor(Math.random() * SCRAMBLE_CHARS.length)];
@@ -26,13 +26,7 @@ export default function useDocumentTitleScramble(title, duration = 1800) {
     useEffect(() => {
         previousTitleRef.current = document.title;
 
-        let shouldScramble = true;
-
-        try {
-            shouldScramble = window.localStorage.getItem(SCRAMBLE_SESSION_KEY) !== "1";
-        } catch (_error) {
-            shouldScramble = true;
-        }
+        const shouldScramble = !hasPlayedScramble();
 
         if (!shouldScramble) {
             document.title = finalTitle;
@@ -49,11 +43,7 @@ export default function useDocumentTitleScramble(title, duration = 1800) {
             if (progress >= 1) {
                 window.clearInterval(interval);
                 document.title = finalTitle;
-                try {
-                    window.localStorage.setItem(SCRAMBLE_SESSION_KEY, "1");
-                } catch (_error) {
-                    // Ignore storage write failures.
-                }
+                markScramblePlayed();
             }
         }, 34);
 

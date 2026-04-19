@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
+import { hasPlayedScramble, markScramblePlayed } from "../lib/scramble";
 
 const SCRAMBLE_CHARS = "!@#$%*&";
-const SCRAMBLE_SESSION_KEY = "cipher-text-scramble-played-v1";
 
 function randomChar() {
     return SCRAMBLE_CHARS[Math.floor(Math.random() * SCRAMBLE_CHARS.length)];
@@ -31,11 +31,7 @@ export default function TextScramble({
     useEffect(() => {
         let shouldScramble = true;
 
-        try {
-            shouldScramble = window.localStorage.getItem(SCRAMBLE_SESSION_KEY) !== "1";
-        } catch (_error) {
-            shouldScramble = true;
-        }
+        shouldScramble = !hasPlayedScramble();
 
         if (!shouldScramble) {
             setDisplayText(targetText);
@@ -52,11 +48,7 @@ export default function TextScramble({
             if (progress >= 1) {
                 window.clearInterval(interval);
                 setDisplayText(targetText);
-                try {
-                    window.localStorage.setItem(SCRAMBLE_SESSION_KEY, "1");
-                } catch (_error) {
-                    // Ignore storage write failures.
-                }
+                markScramblePlayed();
             }
         }, 34);
 
