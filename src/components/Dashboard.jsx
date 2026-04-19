@@ -1,8 +1,48 @@
 import { useEffect, useRef, useState } from "react";
+import { motion } from "framer-motion";
 import { apiFetch } from "../lib/api";
+import TextScramble from "./TextScramble";
 
 const GLASS_PANEL =
   "rounded-3xl border border-white/10 bg-[rgba(255,255,255,0.03)] backdrop-blur-xl shadow-[0_8px_40px_rgba(0,0,0,0.45)]";
+
+const panelStaggerVariants = {
+  hidden: {},
+  visible: {
+    transition: {
+      staggerChildren: 0.2,
+      delayChildren: 0.2,
+    },
+  },
+};
+
+const panelIntroVariants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: {
+      type: "spring",
+      stiffness: 100,
+      damping: 18,
+    },
+  },
+};
+
+const commandBarVariants = {
+  hidden: { opacity: 0, y: 16 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: {
+      duration: 0.24,
+      delay: 1.05,
+      ease: [0.22, 1, 0.36, 1],
+    },
+  },
+};
+
+const COMMAND_BAR_SCAN_SESSION_KEY = "cipher-command-bar-scan-v1";
 
 function formatTime(seconds) {
   const clamped = Math.max(0, seconds);
@@ -75,10 +115,39 @@ export default function Dashboard() {
   const wakeWordActiveRef = useRef(false);
   const pendingVoiceCommandRef = useRef("");
   const restartRecognitionRef = useRef(null);
+  const [canRunCommandBarScan, setCanRunCommandBarScan] = useState(false);
+  const [runCommandBarScan, setRunCommandBarScan] = useState(false);
 
   useEffect(() => {
     setRemainingSeconds(durationMinutes * 60);
   }, [durationMinutes]);
+
+  useEffect(() => {
+    try {
+      const hasPlayed = window.sessionStorage.getItem(COMMAND_BAR_SCAN_SESSION_KEY) === "1";
+      setCanRunCommandBarScan(!hasPlayed);
+    } catch (_error) {
+      setCanRunCommandBarScan(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!runCommandBarScan) {
+      return undefined;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setRunCommandBarScan(false);
+      setCanRunCommandBarScan(false);
+      try {
+        window.sessionStorage.setItem(COMMAND_BAR_SCAN_SESSION_KEY, "1");
+      } catch (_error) {
+        // Ignore session storage write failures.
+      }
+    }, 900);
+
+    return () => window.clearTimeout(timeout);
+  }, [runCommandBarScan]);
 
   useEffect(() => {
     if (!isRunning) {
@@ -350,6 +419,13 @@ export default function Dashboard() {
 
   const progressPct = ((durationMinutes * 60 - remainingSeconds) / Math.max(1, durationMinutes * 60)) * 100;
 
+  const handleCommandBarIntroComplete = () => {
+    if (!canRunCommandBarScan || runCommandBarScan) {
+      return;
+    }
+    setRunCommandBarScan(true);
+  };
+
   return (
     <div
       className="min-h-screen w-full px-4 pb-28 pt-6 text-zinc-100 md:px-8"
@@ -359,8 +435,13 @@ export default function Dashboard() {
           "radial-gradient(circle at 20% 10%, rgba(0,255,255,0.08), transparent 35%), radial-gradient(circle at 80% 25%, rgba(255,255,255,0.06), transparent 30%), radial-gradient(circle at 50% 90%, rgba(0,255,255,0.06), transparent 35%)",
       }}
     >
-      <div className="mx-auto grid w-full max-w-7xl grid-cols-1 gap-4 md:grid-cols-12">
-        <section className={`${GLASS_PANEL} p-5 md:col-span-3`}>
+      <motion.div
+        className="mx-auto grid w-full max-w-7xl grid-cols-1 gap-4 md:grid-cols-12"
+        variants={panelStaggerVariants}
+        initial="hidden"
+        animate="visible"
+      >
+        <motion.section variants={panelIntroVariants} className={`${GLASS_PANEL} p-5 md:col-span-3`}>
           <h2 className="mb-3 text-sm uppercase tracking-[0.22em] text-cyan-200/80">Microsoft To-Do</h2>
           <div className="space-y-2 overflow-y-auto pr-1" style={{ maxHeight: "68vh" }}>
             {tasks.length === 0 ? (
@@ -385,10 +466,12 @@ export default function Dashboard() {
               ))
             )}
           </div>
-        </section>
+        </motion.section>
 
-        <section className={`${GLASS_PANEL} p-6 md:col-span-6`}>
-          <h2 className="mb-4 text-center text-sm uppercase tracking-[0.22em] text-cyan-200/80">Focus Core</h2>
+        <motion.section variants={panelIntroVariants} className={`${GLASS_PANEL} p-6 md:col-span-6`}>
+          <h2 className="mb-4 text-center text-sm uppercase tracking-[0.22em] text-cyan-200/80">
+            <TextScramble text="FOCUS CORE" />
+          </h2>
           <div className="flex flex-col items-center justify-center">
             <div
               className="relative grid h-72 w-72 place-items-center rounded-full border border-cyan-300/35"
@@ -437,10 +520,12 @@ export default function Dashboard() {
               </button>
             </div>
           </div>
-        </section>
+        </motion.section>
 
-        <section className={`${GLASS_PANEL} p-5 md:col-span-3`}>
-          <h2 className="mb-3 text-sm uppercase tracking-[0.22em] text-cyan-200/80">Cipher Intelligence</h2>
+        <motion.section variants={panelIntroVariants} className={`${GLASS_PANEL} p-5 md:col-span-3`}>
+          <h2 className="mb-3 text-sm uppercase tracking-[0.22em] text-cyan-200/80">
+            <TextScramble text="CIPHER INTELLIGENCE" />
+          </h2>
           <div className="space-y-2 overflow-y-auto pr-1" style={{ maxHeight: "68vh" }}>
             {feed.map((entry) => (
               <article
@@ -452,14 +537,25 @@ export default function Dashboard() {
               </article>
             ))}
           </div>
-        </section>
-      </div>
+        </motion.section>
+      </motion.div>
 
-      <form
+      <motion.form
         onSubmit={onCommandSubmit}
         className="fixed bottom-5 left-1/2 z-30 w-[min(860px,calc(100%-2rem))] -translate-x-1/2"
+        variants={commandBarVariants}
+        initial="hidden"
+        animate="visible"
+        onAnimationComplete={handleCommandBarIntroComplete}
       >
-        <div className="rounded-2xl border border-cyan-300/45 bg-[rgba(255,255,255,0.05)] p-2 backdrop-blur-xl shadow-[0_0_26px_rgba(0,255,255,0.25)] animate-glowPulse">
+        <div className="relative overflow-hidden rounded-2xl border border-cyan-300/45 bg-[rgba(255,255,255,0.05)] p-2 backdrop-blur-xl shadow-[0_0_26px_rgba(0,255,255,0.25)]">
+          {canRunCommandBarScan ? (
+            <span
+              aria-hidden="true"
+              className={`pointer-events-none absolute left-0 top-0 h-px w-28 bg-gradient-to-r from-transparent via-cyan-200/95 to-transparent transition-transform duration-700 ease-linear ${runCommandBarScan ? "translate-x-[420%]" : "-translate-x-[140%]"
+                }`}
+            />
+          ) : null}
           <div className="mb-2 flex items-center justify-between gap-3 px-1 text-[11px] uppercase tracking-[0.18em] text-cyan-100/75">
             <span>{wakeWordStatus}</span>
             <span className="rounded-full border border-cyan-300/35 bg-cyan-300/10 px-3 py-1 text-[11px] font-semibold text-cyan-100">
@@ -483,7 +579,7 @@ export default function Dashboard() {
             </button>
           </div>
         </div>
-      </form>
+      </motion.form>
     </div>
   );
 }
