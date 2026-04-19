@@ -26,10 +26,10 @@ app.config["SESSION_COOKIE_SAMESITE"] = os.getenv("SESSION_COOKIE_SAMESITE", "La
 app.config["SESSION_COOKIE_SECURE"] = (os.getenv("SESSION_COOKIE_SECURE", "false").strip().lower() == "true")
 app.config["SESSION_REFRESH_EACH_REQUEST"] = False
 
-INTENT_MODEL = "meta-llama/llama-3.1-8b-instruct:free"
+INTENT_MODEL = "openrouter/free"
 SUMMARIZE_MODEL = "qwen/qwen3.6-plus:free"
 HUMANIZE_MODEL = "arcee-ai/trinity-large-preview:free"
-CHAT_MODEL = "meta-llama/llama-3.1-8b-instruct:free"
+CHAT_MODEL = "openrouter/free"
 OPENROUTER_FREE_MODEL = "openrouter/free"
 
 CIPHER_PERSONA_PROMPT = (
@@ -566,6 +566,11 @@ def _route_aria_intent(message_text: str, api_key: str) -> Tuple[str, str, bool]
 def _detect_cipher_intent(message_text: str, api_key: str) -> Dict[str, Any]:
     if api_key:
         intent, model_used, used_fallback = _route_aria_intent(message_text, api_key)
+        # If model routing is uncertain, prefer deterministic keyword routing
+        # for known command-style intents (timer/summarize/humanize/coach).
+        rule_intent = _rule_based_intent(message_text)
+        if intent == "[CHAT]" and rule_intent != "[CHAT]":
+            intent = rule_intent
         return {
             "intent": intent,
             "usedFallback": used_fallback,
@@ -1078,6 +1083,265 @@ def _load_graph_todo_view(
         "selectedList": _serialize_graph_todo_list(selected_list),
         "todos": tasks,
     }, None, None
+
+
+def _normalize_task_key(raw_value: Any) -> str:
+    normalized = re.sub(r"\s+", " ", str(raw_value or "").strip().lower())
+    return normalized
+
+
+def _extract_estimated_minutes_from_task(task: Dict[str, Any]) -> int:
+    for field in [
+        "estimatedMinutes",
+        "estimateMinutes",
+        "estimated_minutes",
+        "estimated_time_minutes",
+        "estimatedDurationMinutes",
+    ]:
+        value = task.get(field)
+        if value is None:
+            continue
+        try:
+            parsed = int(float(value))
+            if parsed > 0:
+                return parsed
+        except (TypeError, ValueError):
+            continue
+
+    title = str(task.get("title") or "")
+    hour_match = re.search(r"(estimate|est|eta)\s*[:=-]?\s*(\d+(?:\.\d+)?)\s*h\b", title, re.IGNORECASE)
+    if hour_match:
+        return max(1, round(float(hour_match.group(2)) * 60))
+
+    minute_match = re.search(r"(estimate|est|eta)\s*[:=-]?\s*(\d{1,4})\s*m(?:in(?:ute)?s?)?\b", title, re.IGNORECASE)
+    if minute_match:
+        return max(1, int(minute_match.group(2)))
+
+    return 60
+
+
+def _extract_completed_datetime(task: Dict[str, Any]) -> Optional[str]:
+    completed = task.get("completedDateTime")
+    if isinstance(completed, dict):
+        completed_value = str(completed.get("dateTime") or "").strip()
+        if completed_value:
+            return completed_value
+
+    fallback = str(task.get("completedDateTime") or "").strip()
+    return fallback or None
+
+
+def _extract_focus_minutes_from_row(row: Dict[str, Any]) -> float:
+    ms_candidates = ["focus_ms", "session_ms", "duration_ms", "durationMs"]
+    for field in ms_candidates:
+        value = row.get(field)
+        if value is None:
+            continue
+        try:
+            parsed_ms = float(value)
+            if parsed_ms > 0:
+                return parsed_ms / 60000.0
+        except (TypeError, ValueError):
+            continue
+
+    minute_candidates = ["duration_minutes", "durationMinutes", "focus_minutes", "minutes", "duration"]
+    for field in minute_candidates:
+        value = row.get(field)
+        if value is None:
+            continue
+        try:
+            parsed_minutes = float(value)
+            if parsed_minutes > 0:
+                return parsed_minutes
+        except (TypeError, ValueError):
+            continue
+
+    return 0.0
+
+
+def _extract_focus_task_keys(row: Dict[str, Any]) -> list[str]:
+    keys: list[str] = []
+    for field in [
+        "task_id",
+        "taskId",
+        "todo_id",
+        "todoId",
+        "microsoft_task_id",
+        "microsoftTaskId",
+        "task_title",
+        "taskTitle",
+        "title",
+        "task_name",
+        "taskName",
+        "name",
+    ]:
+        normalized = _normalize_task_key(row.get(field))
+        if normalized:
+            keys.append(normalized)
+
+    deduped = []
+    seen = set()
+    for key in keys:
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(key)
+    return deduped
+
+
+def _fetch_completed_graph_tasks_for_velocity() -> Tuple[list[Dict[str, Any]], Optional[str]]:
+    delegated_token, delegated_error = _get_delegated_graph_access_token()
+    access_token: Optional[str] = None
+    user_identifier: Optional[str] = None
+    use_me_endpoint = False
+
+    if delegated_token and not delegated_error:
+        access_token = delegated_token
+        use_me_endpoint = True
+    else:
+        token_result, auth_error = _acquire_graph_token()
+        if auth_error:
+            return [], f"Microsoft Graph authentication failed: {auth_error}"
+
+        access_token = str(token_result.get("access_token") or "").strip()
+        user_identifier, user_error = _graph_todo_user_identifier()
+        if user_error:
+            return [], f"Graph app-only mode requires a configured user: {user_error}"
+
+    selected_list, lists, list_error = _resolve_graph_todo_list_id(
+        access_token=access_token,
+        user_identifier=user_identifier,
+        requested_list_id=None,
+        use_me_endpoint=use_me_endpoint,
+    )
+    if list_error:
+        return [], list_error
+
+    if not lists:
+        return [], None
+
+    completed_tasks: list[Dict[str, Any]] = []
+    for todo_list in lists:
+        list_id = str(todo_list.get("id") or "").strip()
+        if not list_id:
+            continue
+
+        if use_me_endpoint:
+            tasks_url = f"https://graph.microsoft.com/v1.0/me/todo/lists/{quote(list_id, safe='')}/tasks"
+        else:
+            tasks_url = (
+                "https://graph.microsoft.com/v1.0/users/"
+                f"{quote(str(user_identifier or ''), safe='')}/todo/lists/{quote(list_id, safe='')}/tasks"
+            )
+
+        tasks_response = _graph_request("GET", tasks_url, access_token)
+        if not tasks_response.get("ok"):
+            return [], f"Failed to fetch Graph tasks for list {list_id}: {tasks_response.get('error')}"
+
+        for task in (tasks_response.get("data") or {}).get("value") or []:
+            if not isinstance(task, dict):
+                continue
+
+            status = str(task.get("status") or "").strip().lower()
+            if status != "completed":
+                continue
+
+            completed_tasks.append(
+                {
+                    "id": task.get("id"),
+                    "title": task.get("title"),
+                    "createdDateTime": task.get("createdDateTime"),
+                    "completedDateTime": _extract_completed_datetime(task),
+                    "estimatedMinutes": _extract_estimated_minutes_from_task(task),
+                }
+            )
+
+    completed_tasks.sort(key=lambda item: str(item.get("completedDateTime") or ""), reverse=True)
+    return completed_tasks, None
+
+
+def _fetch_focus_minutes_index_for_velocity(user_id: str) -> Tuple[Dict[str, float], float, Optional[str]]:
+    supabase = _get_supabase_client()
+    try:
+        result = supabase.table("focus_sessions").select("*").eq("user_id", user_id).limit(1000).execute()
+    except Exception as exc:
+        return {}, 0.0, f"Failed to load focus sessions: {exc}"
+
+    rows = result.data or []
+    total_focus_minutes = 0.0
+    focus_by_task_key: Dict[str, float] = {}
+
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+
+        duration_minutes = _extract_focus_minutes_from_row(row)
+        if duration_minutes <= 0:
+            continue
+
+        total_focus_minutes += duration_minutes
+        row_task_keys = _extract_focus_task_keys(row)
+        for key in row_task_keys:
+            focus_by_task_key[key] = focus_by_task_key.get(key, 0.0) + duration_minutes
+
+    return focus_by_task_key, total_focus_minutes, None
+
+
+def _build_velocity_efficiency_list(completed_tasks: list[Dict[str, Any]], focus_by_task_key: Dict[str, float]) -> list[Dict[str, Any]]:
+    efficiency_list: list[Dict[str, Any]] = []
+
+    for task in completed_tasks:
+        task_id_key = _normalize_task_key(task.get("id"))
+        task_title_key = _normalize_task_key(task.get("title"))
+
+        actual_minutes = 0.0
+        if task_id_key:
+            actual_minutes = focus_by_task_key.get(task_id_key, 0.0)
+        if actual_minutes <= 0 and task_title_key:
+            actual_minutes = focus_by_task_key.get(task_title_key, 0.0)
+
+        estimated_minutes = max(1, int(task.get("estimatedMinutes") or 60))
+        efficiency_ratio = round(actual_minutes / estimated_minutes, 3)
+
+        efficiency_list.append(
+            {
+                "task_id": task.get("id"),
+                "title": task.get("title"),
+                "createdDateTime": task.get("createdDateTime"),
+                "completedDateTime": task.get("completedDateTime"),
+                "estimated_minutes": estimated_minutes,
+                "actual_minutes": round(actual_minutes, 2),
+                "efficiency_ratio": efficiency_ratio,
+            }
+        )
+
+    return efficiency_list
+
+
+def _generate_cipher_velocity_critique(api_key: str, velocity_payload: Dict[str, Any]) -> str:
+    if not api_key:
+        return "Cipher critique unavailable: OPENROUTER_API_KEY is not configured."
+
+    try:
+        critique = _openrouter_chat_completion(
+            api_key=api_key,
+            model="qwen/qwen3.6-plus:free",
+            temperature=0.2,
+            max_tokens=200,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are Cipher. Analyze this velocity data. If the user is slow, be brutally honest. If they are efficient, give a 1-sentence technical nod.",
+                },
+                {
+                    "role": "user",
+                    "content": json.dumps(velocity_payload),
+                },
+            ],
+        )
+        return critique
+    except Exception as exc:
+        return f"Cipher critique unavailable: {exc}"
 
 
 @app.after_request
@@ -1626,13 +1890,25 @@ def cipher_command_center():
         message_with_context = f"{message_text}\n\n{task_context}"
 
     try:
-        intent_result = _detect_cipher_intent(message_text, api_key)
+        try:
+            intent_result = _detect_cipher_intent(message_text, api_key)
+        except Exception as intent_exc:
+            intent_result = {
+                "intent": _rule_based_intent(message_text),
+                "provider": "local",
+                "modelUsed": "rule-based",
+                "usedFallback": True,
+                "intentError": str(intent_exc),
+            }
+
         intent = str(intent_result.get("intent") or "[CHAT]")
         intent_meta = {
             "intentProvider": intent_result.get("provider"),
             "intentModelUsed": intent_result.get("modelUsed"),
             "intentUsedFallback": bool(intent_result.get("usedFallback")),
         }
+        if intent_result.get("intentError"):
+            intent_meta["intentError"] = intent_result.get("intentError")
 
         if intent == "[SUMMARIZE]":
             ratio_percent = payload.get("ratioPercent", 25)
@@ -1758,30 +2034,42 @@ def cipher_command_center():
                 }
             )
 
-        chat_reply, chat_model_used, chat_fallback_used = _openrouter_chat_completion_with_fallback(
-            api_key=api_key,
-            primary_model=CHAT_MODEL,
-            temperature=0.45,
-            max_tokens=700,
-            messages=[
+        try:
+            chat_reply, chat_model_used, chat_fallback_used = _openrouter_chat_completion_with_fallback(
+                api_key=api_key,
+                primary_model=CHAT_MODEL,
+                temperature=0.45,
+                max_tokens=700,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": CIPHER_PERSONA_PROMPT,
+                    },
+                    {"role": "user", "content": message_with_context},
+                ],
+            )
+            return jsonify(
                 {
-                    "role": "system",
-                    "content": CIPHER_PERSONA_PROMPT,
-                },
-                {"role": "user", "content": message_with_context},
-            ],
-        )
-        return jsonify(
-            {
-                "intent": intent,
-                **intent_meta,
-                "reply": chat_reply,
-                "usedFallback": False,
-                "provider": "openrouter",
-                "modelUsed": chat_model_used,
-                "modelFallbackUsed": chat_fallback_used,
-            }
-        )
+                    "intent": intent,
+                    **intent_meta,
+                    "reply": chat_reply,
+                    "usedFallback": False,
+                    "provider": "openrouter",
+                    "modelUsed": chat_model_used,
+                    "modelFallbackUsed": chat_fallback_used,
+                }
+            )
+        except Exception as chat_exc:
+            return jsonify(
+                {
+                    "intent": intent,
+                    **intent_meta,
+                    "reply": "Cipher AI is temporarily unavailable. Use timer/summarize/humanize commands, or retry in a few seconds.",
+                    "usedFallback": True,
+                    "provider": "local",
+                    "fallbackReason": str(chat_exc),
+                }
+            )
     except Exception as exc:
         fallback_sorted_tasks = []
         fallback_error = None
@@ -1962,6 +2250,48 @@ def delete_focus_sessions():
         return jsonify({"ok": True, "message": "All history cleared successfully"})
     except Exception as exc:
         return _json_error("Failed to clear history", 500, {"reason": str(exc)})
+
+
+@app.route("/api/velocity", methods=["GET"])
+def developer_velocity():
+    user_id, user_error = _get_request_user_id()
+    if user_error:
+        return _json_error("Unauthorized", 401, {"reason": user_error})
+    if not user_id:
+        return _json_error("Unable to resolve user context", 400)
+
+    completed_tasks, tasks_error = _fetch_completed_graph_tasks_for_velocity()
+    if tasks_error:
+        return _json_error("Failed to fetch completed Microsoft tasks", 500, {"reason": tasks_error})
+
+    focus_by_task_key, total_focus_minutes, focus_error = _fetch_focus_minutes_index_for_velocity(user_id)
+    if focus_error:
+        return _json_error("Failed to fetch focus session logs", 500, {"reason": focus_error})
+
+    task_efficiency_list = _build_velocity_efficiency_list(completed_tasks, focus_by_task_key)
+
+    total_hours = round(total_focus_minutes / 60.0, 2)
+    completed_task_count = len(completed_tasks)
+    velocity_score = 0.0
+    if total_hours > 0:
+        velocity_score = round(completed_task_count / total_hours, 4)
+
+    payload_for_cipher = {
+        "tasks_completed": completed_task_count,
+        "total_focus_hours": total_hours,
+        "velocity_score": velocity_score,
+        "task_efficiency_list": task_efficiency_list,
+    }
+    cipher_critique = _generate_cipher_velocity_critique(_get_ai_api_key(), payload_for_cipher)
+
+    return jsonify(
+        {
+            "velocity_score": velocity_score,
+            "total_hours": total_hours,
+            "task_efficiency_list": task_efficiency_list,
+            "cipher_critique": cipher_critique,
+        }
+    )
 
 
 @app.route("/api/todos", methods=["GET"])
