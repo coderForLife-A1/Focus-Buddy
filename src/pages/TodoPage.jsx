@@ -1,9 +1,33 @@
 import { useEffect, useMemo, useState } from "react";
+import { motion } from "framer-motion";
 import { apiFetch } from "../lib/api";
 import useDocumentTitleScramble from "../hooks/useDocumentTitleScramble";
 
 const GLASS_PANEL =
   "rounded-3xl border border-white/10 bg-[rgba(255,255,255,0.03)] backdrop-blur-xl shadow-[0_8px_40px_rgba(0,0,0,0.45)]";
+
+const panelStaggerVariants = {
+  hidden: {},
+  visible: {
+    transition: {
+      staggerChildren: 0.2,
+      delayChildren: 0.2,
+    },
+  },
+};
+
+const panelIntroVariants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: {
+      type: "spring",
+      stiffness: 100,
+      damping: 18,
+    },
+  },
+};
 
 function titleForMode(mode, authenticated) {
   if (mode === "microsoft") {
@@ -277,8 +301,8 @@ export default function TodoPage() {
           "radial-gradient(circle at 20% 10%, rgba(0,255,255,0.08), transparent 35%), radial-gradient(circle at 80% 25%, rgba(255,255,255,0.06), transparent 30%), radial-gradient(circle at 50% 90%, rgba(0,255,255,0.06), transparent 35%)",
       }}
     >
-      <div className="mx-auto grid w-full max-w-7xl gap-4 md:grid-cols-12">
-        <div className={`${GLASS_PANEL} p-5 md:col-span-4`}>
+      <motion.div className="mx-auto grid w-full max-w-7xl gap-4 md:grid-cols-12" variants={panelStaggerVariants} initial="hidden" animate="visible">
+        <motion.div variants={panelIntroVariants} className={`${GLASS_PANEL} p-5 md:col-span-4`}>
           <h1 className="text-lg font-semibold tracking-wide text-cyan-100">To-Do Manager</h1>
           <p className="mt-1 text-sm text-zinc-400">{titleForMode(todoMode, auth.authenticated)}</p>
 
@@ -356,9 +380,9 @@ export default function TodoPage() {
               <div className="text-zinc-400">Done</div>
             </div>
           </div>
-        </div>
+        </motion.div>
 
-        <div className={`${GLASS_PANEL} p-5 md:col-span-8`}>
+        <motion.div variants={panelIntroVariants} className={`${GLASS_PANEL} p-5 md:col-span-8`}>
           <div className="flex flex-col gap-2 md:flex-row">
             <input
               value={titleInput}
@@ -430,8 +454,8 @@ export default function TodoPage() {
               ))
             )}
           </div>
-        </div>
-      </div>
+        </motion.div>
+      </motion.div>
     </section>
   );
 }

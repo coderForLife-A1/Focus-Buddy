@@ -1,9 +1,33 @@
 import { useEffect, useMemo, useState } from "react";
+import { motion } from "framer-motion";
 import { apiFetch } from "../lib/api";
 import useDocumentTitleScramble from "../hooks/useDocumentTitleScramble";
 
 const GLASS_PANEL =
   "rounded-3xl border border-white/10 bg-[rgba(255,255,255,0.03)] backdrop-blur-xl shadow-[0_8px_40px_rgba(0,0,0,0.45)]";
+
+const panelStaggerVariants = {
+  hidden: {},
+  visible: {
+    transition: {
+      staggerChildren: 0.2,
+      delayChildren: 0.2,
+    },
+  },
+};
+
+const panelIntroVariants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: {
+      type: "spring",
+      stiffness: 100,
+      damping: 18,
+    },
+  },
+};
 
 const HOLIDAY_COUNTRY = "IN";
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -150,8 +174,8 @@ export default function CalendarPage() {
           "radial-gradient(circle at 20% 10%, rgba(0,255,255,0.08), transparent 35%), radial-gradient(circle at 80% 25%, rgba(255,255,255,0.06), transparent 30%), radial-gradient(circle at 50% 90%, rgba(0,255,255,0.06), transparent 35%)",
       }}
     >
-      <div className="mx-auto grid max-w-7xl gap-4">
-        <div className={`${GLASS_PANEL} p-5`}>
+      <motion.div className="mx-auto grid max-w-7xl gap-4" variants={panelStaggerVariants} initial="hidden" animate="visible">
+        <motion.div variants={panelIntroVariants} className={`${GLASS_PANEL} p-5`}>
           <h1 className="text-xl font-semibold text-cyan-100">Task Calendar</h1>
           <p className="mt-1 text-sm text-zinc-400">Calendar overlays task events and public holidays.</p>
 
@@ -197,9 +221,9 @@ export default function CalendarPage() {
           </div>
 
           <p className="mt-3 text-xs text-zinc-400">{status}</p>
-        </div>
+        </motion.div>
 
-        <div className={`${GLASS_PANEL} p-5`}>
+        <motion.div variants={panelIntroVariants} className={`${GLASS_PANEL} p-5`}>
           <div className="grid grid-cols-7 gap-2">
             {DOW.map((day) => (
               <div key={day} className="rounded-lg bg-white/5 px-2 py-1 text-center text-xs uppercase tracking-[0.14em] text-zinc-400">
@@ -249,9 +273,9 @@ export default function CalendarPage() {
               );
             })}
           </div>
-        </div>
+        </motion.div>
 
-        <div className={`${GLASS_PANEL} p-5`}>
+        <motion.div variants={panelIntroVariants} className={`${GLASS_PANEL} p-5`}>
           <h2 className="text-sm uppercase tracking-[0.18em] text-zinc-300">Holidays In Selected Year</h2>
           {holidays.length === 0 ? (
             <p className="mt-3 text-sm text-zinc-400">No holiday data loaded yet.</p>
@@ -272,8 +296,8 @@ export default function CalendarPage() {
                 })}
             </ul>
           )}
-        </div>
-      </div>
+        </motion.div>
+      </motion.div>
     </section>
   );
 }
