@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { motion } from "framer-motion";
 import {
     ResponsiveContainer,
     LineChart,
@@ -15,6 +16,29 @@ import useDocumentTitleScramble from "../hooks/useDocumentTitleScramble";
 
 const GLASS_PANEL =
     "rounded-3xl border border-white/10 bg-[rgba(255,255,255,0.03)] backdrop-blur-xl shadow-[0_8px_40px_rgba(0,0,0,0.45)]";
+
+const panelStaggerVariants = {
+    hidden: {},
+    visible: {
+        transition: {
+            staggerChildren: 0.2,
+            delayChildren: 0.2,
+        },
+    },
+};
+
+const panelIntroVariants = {
+    hidden: { opacity: 0, y: 20 },
+    visible: {
+        opacity: 1,
+        y: 0,
+        transition: {
+            type: "spring",
+            stiffness: 100,
+            damping: 18,
+        },
+    },
+};
 
 const DAYS_TO_SHOW = 7;
 
@@ -165,8 +189,8 @@ export default function VelocityDashboard() {
                     "radial-gradient(circle at 15% 15%, rgba(0,255,255,0.08), transparent 34%), radial-gradient(circle at 85% 25%, rgba(255,255,255,0.06), transparent 28%), radial-gradient(circle at 50% 88%, rgba(0,255,255,0.05), transparent 35%)",
             }}
         >
-            <div className="mx-auto max-w-7xl space-y-4">
-                <header className={`${GLASS_PANEL} flex flex-wrap items-center justify-between gap-3 p-5`}>
+            <motion.div className="mx-auto max-w-7xl space-y-4" variants={panelStaggerVariants} initial="hidden" animate="visible">
+                <motion.header variants={panelIntroVariants} className={`${GLASS_PANEL} flex flex-wrap items-center justify-between gap-3 p-5`}>
                     <div>
                         <p className="text-xs uppercase tracking-[0.22em] text-cyan-300/80">Command Console</p>
                         <h1 className="mt-1 text-2xl font-semibold text-cyan-100">Developer Velocity Matrix</h1>
@@ -175,24 +199,24 @@ export default function VelocityDashboard() {
                     <div className="rounded-2xl border border-cyan-300/30 bg-cyan-300/10 px-4 py-2 text-xs tracking-[0.14em] text-cyan-100">
                         LIVE FEED
                     </div>
-                </header>
+                </motion.header>
 
                 {loading ? (
-                    <div className={`${GLASS_PANEL} flex min-h-[240px] items-center justify-center p-6`}>
+                    <motion.div variants={panelIntroVariants} className={`${GLASS_PANEL} flex min-h-[240px] items-center justify-center p-6`}>
                         <div className="text-center">
                             <p className="text-xs uppercase tracking-[0.2em] text-cyan-300/80">Cipher Pipeline</p>
                             <p className="mt-2 text-2xl font-semibold text-cyan-100">Decoding Data...</p>
                             <p className="mt-2 text-sm text-zinc-400">Syncing Graph completions and focus telemetry from Supabase.</p>
                         </div>
-                    </div>
+                    </motion.div>
                 ) : error ? (
-                    <div className={`${GLASS_PANEL} border-rose-300/30 p-6`}>
+                    <motion.div variants={panelIntroVariants} className={`${GLASS_PANEL} border-rose-300/30 p-6`}>
                         <p className="text-xs uppercase tracking-[0.2em] text-rose-300">Decoder Fault</p>
                         <p className="mt-2 text-sm text-rose-100">{error}</p>
-                    </div>
+                    </motion.div>
                 ) : (
-                    <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
-                        <article className={`${GLASS_PANEL} p-5 sm:p-6 lg:col-span-8`}>
+                    <motion.div variants={panelStaggerVariants} className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+                        <motion.article variants={panelIntroVariants} className={`${GLASS_PANEL} p-5 sm:p-6 lg:col-span-8`}>
                             <div className="mb-4 flex items-center justify-between gap-3">
                                 <div>
                                     <h2 className="text-lg font-semibold text-cyan-100">Focus Hours vs Tasks Completed</h2>
@@ -239,9 +263,9 @@ export default function VelocityDashboard() {
                                     </LineChart>
                                 </ResponsiveContainer>
                             </div>
-                        </article>
+                        </motion.article>
 
-                        <article className={`${GLASS_PANEL} p-5 sm:p-6 lg:col-span-4`}>
+                        <motion.article variants={panelIntroVariants} className={`${GLASS_PANEL} p-5 sm:p-6 lg:col-span-4`}>
                             <div className="mb-4 flex items-center justify-between">
                                 <h2 className="text-lg font-semibold text-cyan-100">Efficiency Gauge</h2>
                                 <Gauge className="h-5 w-5 text-cyan-300" />
@@ -250,9 +274,9 @@ export default function VelocityDashboard() {
                             <p className="mt-3 text-center text-xs text-zinc-400">
                                 Velocity Score = tasks completed / total focus hours
                             </p>
-                        </article>
+                        </motion.article>
 
-                        <article className={`${GLASS_PANEL} grid gap-3 p-5 sm:grid-cols-3 lg:col-span-12`}>
+                        <motion.article variants={panelIntroVariants} className={`${GLASS_PANEL} grid gap-3 p-5 sm:grid-cols-3 lg:col-span-12`}>
                             <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
                                 <div className="mb-2 flex items-center gap-2 text-cyan-200">
                                     <Radar className="h-4 w-4" />
@@ -274,9 +298,9 @@ export default function VelocityDashboard() {
                                 </div>
                                 <p className="text-2xl font-semibold text-cyan-100">{Math.round(avgTaskMinutes)}m</p>
                             </div>
-                        </article>
+                        </motion.article>
 
-                        <article className={`${GLASS_PANEL} p-6 lg:col-span-12`}>
+                        <motion.article variants={panelIntroVariants} className={`${GLASS_PANEL} p-6 lg:col-span-12`}>
                             <div className="mb-3 flex items-center gap-2 text-cyan-200">
                                 <MessageSquareText className="h-5 w-5" />
                                 <h2 className="text-lg font-semibold text-cyan-100">Cipher Performance Review</h2>
@@ -284,10 +308,10 @@ export default function VelocityDashboard() {
                             <p className="rounded-2xl border border-cyan-300/25 bg-cyan-300/5 p-4 text-sm leading-7 text-zinc-100">
                                 {cipherCritique}
                             </p>
-                        </article>
-                    </div>
+                        </motion.article>
+                    </motion.div>
                 )}
-            </div>
+            </motion.div>
         </section>
     );
 }

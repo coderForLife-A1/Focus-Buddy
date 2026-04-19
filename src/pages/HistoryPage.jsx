@@ -1,9 +1,33 @@
 import { useEffect, useMemo, useState } from "react";
+import { motion } from "framer-motion";
 import { apiFetch } from "../lib/api";
 import useDocumentTitleScramble from "../hooks/useDocumentTitleScramble";
 
 const GLASS_PANEL =
   "rounded-3xl border border-white/10 bg-[rgba(255,255,255,0.03)] backdrop-blur-xl shadow-[0_8px_40px_rgba(0,0,0,0.45)]";
+
+const panelStaggerVariants = {
+  hidden: {},
+  visible: {
+    transition: {
+      staggerChildren: 0.2,
+      delayChildren: 0.2,
+    },
+  },
+};
+
+const panelIntroVariants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: {
+      type: "spring",
+      stiffness: 100,
+      damping: 18,
+    },
+  },
+};
 
 function fmtTime(ms) {
   const seconds = Math.floor((Number(ms) || 0) / 1000);
@@ -110,8 +134,8 @@ export default function HistoryPage() {
           "radial-gradient(circle at 20% 10%, rgba(0,255,255,0.08), transparent 35%), radial-gradient(circle at 80% 25%, rgba(255,255,255,0.06), transparent 30%), radial-gradient(circle at 50% 90%, rgba(0,255,255,0.06), transparent 35%)",
       }}
     >
-      <div className="mx-auto grid max-w-7xl gap-4">
-        <div className={`${GLASS_PANEL} p-5`}>
+      <motion.div className="mx-auto grid max-w-7xl gap-4" variants={panelStaggerVariants} initial="hidden" animate="visible">
+        <motion.div variants={panelIntroVariants} className={`${GLASS_PANEL} p-5`}>
           <h1 className="text-xl font-semibold text-cyan-100">Focus Session History</h1>
           <p className="mt-1 text-sm text-zinc-400">Filter saved focus sessions and review trends.</p>
 
@@ -155,9 +179,9 @@ export default function HistoryPage() {
           </div>
 
           <p className="mt-3 text-xs text-zinc-400">{status}</p>
-        </div>
+        </motion.div>
 
-        <div className={`${GLASS_PANEL} grid gap-2 p-5 md:grid-cols-4`}>
+        <motion.div variants={panelIntroVariants} className={`${GLASS_PANEL} grid gap-2 p-5 md:grid-cols-4`}>
           <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-center">
             <div className="text-2xl font-semibold text-cyan-100">{summary.total_sessions}</div>
             <div className="text-xs text-zinc-400">Total Sessions</div>
@@ -174,9 +198,9 @@ export default function HistoryPage() {
             <div className="text-2xl font-semibold text-cyan-100">{summary.total_distractions}</div>
             <div className="text-xs text-zinc-400">Total Distractions</div>
           </div>
-        </div>
+        </motion.div>
 
-        <div className={`${GLASS_PANEL} overflow-hidden p-0`}>
+        <motion.div variants={panelIntroVariants} className={`${GLASS_PANEL} overflow-hidden p-0`}>
           {sessions.length === 0 ? (
             <div className="p-6 text-sm text-zinc-400">{isLoading ? "Loading..." : "No sessions found."}</div>
           ) : (
@@ -208,8 +232,8 @@ export default function HistoryPage() {
               </table>
             </div>
           )}
-        </div>
-      </div>
+        </motion.div>
+      </motion.div>
     </section>
   );
 }

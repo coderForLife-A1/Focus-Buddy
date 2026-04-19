@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { apiFetch } from "../lib/api";
+import CommandBar from "./CommandBar";
 import TextScramble from "./TextScramble";
 import useDocumentTitleScramble from "../hooks/useDocumentTitleScramble";
 
@@ -26,19 +27,6 @@ const panelIntroVariants = {
       type: "spring",
       stiffness: 100,
       damping: 18,
-    },
-  },
-};
-
-const commandBarVariants = {
-  hidden: { opacity: 0, y: 16 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: {
-      duration: 0.24,
-      delay: 1.05,
-      ease: [0.22, 1, 0.36, 1],
     },
   },
 };
@@ -111,6 +99,7 @@ export default function Dashboard() {
   const [remainingSeconds, setRemainingSeconds] = useState(25 * 60);
   const [isRunning, setIsRunning] = useState(false);
   const [isBusy, setIsBusy] = useState(false);
+  const [commandBarMode, setCommandBarMode] = useState("idle");
   const [wakeWordStatus, setWakeWordStatus] = useState("Waiting for Hey Cipher");
   const [wakeWordSupported, setWakeWordSupported] = useState(true);
   const inputRef = useRef(null);
@@ -118,12 +107,21 @@ export default function Dashboard() {
   const wakeWordActiveRef = useRef(false);
   const pendingVoiceCommandRef = useRef("");
   const restartRecognitionRef = useRef(null);
+  const typingIntervalRef = useRef(null);
   const [canRunCommandBarScan, setCanRunCommandBarScan] = useState(false);
   const [runCommandBarScan, setRunCommandBarScan] = useState(false);
 
   useEffect(() => {
     setRemainingSeconds(durationMinutes * 60);
   }, [durationMinutes]);
+
+  useEffect(() => {
+    return () => {
+      if (typingIntervalRef.current) {
+        window.clearInterval(typingIntervalRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     try {
@@ -360,6 +358,51 @@ export default function Dashboard() {
     ]);
     setCommand("");
     setIsBusy(true);
+    setCommandBarMode("thinking");
+
+    const streamReplyToFeed = (text) =>
+      new Promise((resolve) => {
+        const content = String(text || "Cipher returned no response.");
+        const entryId = crypto.randomUUID();
+
+        setFeed((prevFeed) => [
+          {
+            id: entryId,
+            role: "cipher",
+            text: "",
+            ts: new Date().toISOString(),
+          },
+          ...prevFeed,
+        ]);
+
+        if (!content) {
+          setCommandBarMode("idle");
+          resolve();
+          return;
+        }
+
+        let cursor = 0;
+        const step = Math.max(1, Math.ceil(content.length / 48));
+        setCommandBarMode("speaking");
+
+        typingIntervalRef.current = window.setInterval(() => {
+          cursor += step;
+          const frame = content.slice(0, cursor);
+
+          setFeed((prevFeed) =>
+            prevFeed.map((entry) => (entry.id === entryId ? { ...entry, text: frame } : entry))
+          );
+
+          if (cursor >= content.length) {
+            if (typingIntervalRef.current) {
+              window.clearInterval(typingIntervalRef.current);
+              typingIntervalRef.current = null;
+            }
+            setCommandBarMode("idle");
+            resolve();
+          }
+        }, 24);
+      });
 
     try {
       const { response, payload } = await apiFetch("/api/cipher", {
@@ -385,16 +428,9 @@ export default function Dashboard() {
         setTasks(fallbackTasks);
       }
 
-      setFeed((prevFeed) => [
-        {
-          id: crypto.randomUUID(),
-          role: "cipher",
-          text: String(payload?.reply || "Cipher returned no response."),
-          ts: new Date().toISOString(),
-        },
-        ...prevFeed,
-      ]);
+      await streamReplyToFeed(payload?.reply);
     } catch (err) {
+      setCommandBarMode("idle");
       setFeed((prevFeed) => [
         {
           id: crypto.randomUUID(),
@@ -559,53 +595,19 @@ export default function Dashboard() {
         </motion.section>
       </motion.div>
 
-      <motion.form
+      <CommandBar
+        command={command}
+        onCommandChange={(event) => setCommand(event.target.value)}
         onSubmit={onCommandSubmit}
-        className="fixed bottom-5 inset-x-0 z-30 flex justify-center px-4"
-        variants={commandBarVariants}
-        initial="hidden"
-        animate="visible"
-        onAnimationComplete={handleCommandBarIntroComplete}
-      >
-        <div className="relative w-full max-w-[860px] overflow-hidden rounded-2xl border border-cyan-300/45 bg-[rgba(255,255,255,0.05)] p-2 backdrop-blur-xl shadow-[0_0_26px_rgba(0,255,255,0.25)]">
-          {canRunCommandBarScan ? (
-            <span
-              aria-hidden="true"
-              className={`pointer-events-none absolute left-0 top-0 h-px w-28 bg-gradient-to-r from-transparent via-cyan-200/95 to-transparent transition-transform duration-700 ease-linear ${runCommandBarScan ? "translate-x-[420%]" : "-translate-x-[140%]"
-                }`}
-            />
-          ) : null}
-          <div className="mb-2 flex items-center justify-between gap-3 px-1 text-[11px] uppercase tracking-[0.18em] text-cyan-100/75">
-            <span>
-              <TextScramble text={wakeWordStatus} />
-            </span>
-            <span className="rounded-full border border-cyan-300/35 bg-cyan-300/10 px-3 py-1 text-[11px] font-semibold text-cyan-100">
-              <TextScramble text={wakeWordSupported ? "HEY CIPHER ARMED" : "WAKE WORD UNAVAILABLE"} />
-            </span>
-          </div>
-          <div className="relative flex items-center gap-2">
-            {command ? null : (
-              <div className="pointer-events-none absolute left-4 right-24 top-1/2 -translate-y-1/2 select-none overflow-hidden text-sm text-zinc-500">
-                <TextScramble text="Cipher Command Bar: summarize this PRD, humanize this update, start 50 min timer..." />
-              </div>
-            )}
-            <input
-              ref={inputRef}
-              value={command}
-              onChange={(event) => setCommand(event.target.value)}
-              placeholder=""
-              className="h-12 flex-1 rounded-xl border border-white/15 bg-black/30 px-4 text-sm text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-cyan-300/70"
-            />
-            <button
-              type="submit"
-              disabled={isBusy}
-              className="h-12 rounded-xl border border-cyan-300/40 bg-cyan-300/10 px-4 text-sm font-semibold text-cyan-100 hover:bg-cyan-300/20 disabled:opacity-60"
-            >
-              <TextScramble text={isBusy ? "THINKING..." : "DISPATCH"} />
-            </button>
-          </div>
-        </div>
-      </motion.form>
+        isBusy={isBusy}
+        mode={commandBarMode}
+        wakeWordStatus={wakeWordStatus}
+        wakeWordSupported={wakeWordSupported}
+        inputRef={inputRef}
+        canRunCommandBarScan={canRunCommandBarScan}
+        runCommandBarScan={runCommandBarScan}
+        onIntroComplete={handleCommandBarIntroComplete}
+      />
     </div>
   );
 }

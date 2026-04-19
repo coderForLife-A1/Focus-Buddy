@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { motion } from "framer-motion";
 import { apiFetch } from "../lib/api";
 import useDocumentTitleScramble from "../hooks/useDocumentTitleScramble";
 
@@ -24,6 +25,29 @@ async function getJsPdfCtor() {
 
 const GLASS_PANEL =
   "rounded-3xl border border-white/10 bg-[rgba(255,255,255,0.03)] backdrop-blur-xl shadow-[0_8px_40px_rgba(0,0,0,0.45)]";
+
+const panelStaggerVariants = {
+  hidden: {},
+  visible: {
+    transition: {
+      staggerChildren: 0.2,
+      delayChildren: 0.2,
+    },
+  },
+};
+
+const panelIntroVariants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: {
+      type: "spring",
+      stiffness: 100,
+      damping: 18,
+    },
+  },
+};
 
 function splitSentences(text) {
   return String(text || "")
@@ -225,8 +249,8 @@ export default function SummarizerPage() {
           "radial-gradient(circle at 20% 10%, rgba(0,255,255,0.08), transparent 35%), radial-gradient(circle at 80% 25%, rgba(255,255,255,0.06), transparent 30%), radial-gradient(circle at 50% 90%, rgba(0,255,255,0.06), transparent 35%)",
       }}
     >
-      <div className="mx-auto grid max-w-7xl gap-4">
-        <div className={`${GLASS_PANEL} p-5`}>
+      <motion.div className="mx-auto grid max-w-7xl gap-4" variants={panelStaggerVariants} initial="hidden" animate="visible">
+        <motion.div variants={panelIntroVariants} className={`${GLASS_PANEL} p-5`}>
           <h1 className="text-xl font-semibold text-cyan-100">AI Summarizer</h1>
           <p className="mt-1 text-sm text-zinc-400">Upload a PDF/text file, or paste text, and generate concise summaries.</p>
 
@@ -284,9 +308,9 @@ export default function SummarizerPage() {
               Source words: <span className="text-cyan-100">{stats.sourceWords}</span>
             </div>
           </div>
-        </div>
+        </motion.div>
 
-        <div className={`${GLASS_PANEL} p-5`}>
+        <motion.div variants={panelIntroVariants} className={`${GLASS_PANEL} p-5`}>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-sm uppercase tracking-[0.18em] text-zinc-300">Summary</h2>
             <div className="flex gap-2">
@@ -309,8 +333,8 @@ export default function SummarizerPage() {
           <div className="min-h-56 rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-sm leading-relaxed text-zinc-100">
             {summary}
           </div>
-        </div>
-      </div>
+        </motion.div>
+      </motion.div>
     </section>
   );
 }
