@@ -26,6 +26,7 @@ export default function CommandBar({
     canRunCommandBarScan,
     runCommandBarScan,
     onIntroComplete,
+    onWakeWordRetry,
 }) {
     const pulseClass =
         mode === "thinking"
@@ -62,14 +63,25 @@ export default function CommandBar({
                 ) : null}
 
                 <div className="mb-2 flex items-center justify-between gap-3 px-1 text-[11px] uppercase tracking-[0.18em] text-cyan-100/75">
-                    <span>
+                    <span className="truncate">
                         <TextScramble text={wakeWordStatus} />
                     </span>
-                    <span
-                        className={`rounded-full border border-cyan-300/35 bg-cyan-300/10 px-3 py-1 text-[11px] font-semibold text-cyan-100 transition-opacity duration-200 ${badgePulseClass}`}
-                    >
-                        <TextScramble text={wakeWordSupported ? "HEY CIPHER ARMED" : "WAKE WORD UNAVAILABLE"} />
-                    </span>
+                    <div className="flex items-center gap-2">
+                        {wakeWordSupported ? (
+                            <button
+                                type="button"
+                                onClick={onWakeWordRetry}
+                                className="rounded-full border border-cyan-300/35 bg-cyan-300/10 px-3 py-1 text-[10px] font-semibold text-cyan-100 hover:bg-cyan-300/20"
+                            >
+                                ENABLE MIC
+                            </button>
+                        ) : null}
+                        <span
+                            className={`rounded-full border border-cyan-300/35 bg-cyan-300/10 px-3 py-1 text-[11px] font-semibold text-cyan-100 transition-opacity duration-200 ${badgePulseClass}`}
+                        >
+                            <TextScramble text={wakeWordSupported ? "HEY CIPHER ARMED" : "WAKE WORD UNAVAILABLE"} />
+                        </span>
+                    </div>
                 </div>
 
                 <div className="relative flex items-center gap-2">

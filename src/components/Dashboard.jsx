@@ -107,6 +107,9 @@ export default function Dashboard() {
   const wakeWordActiveRef = useRef(false);
   const pendingVoiceCommandRef = useRef("");
   const restartRecognitionRef = useRef(null);
+  const recognitionRunningRef = useRef(false);
+  const userGestureArmedRef = useRef(false);
+  const speechStartRef = useRef(() => { });
   const typingIntervalRef = useRef(null);
   const [canRunCommandBarScan, setCanRunCommandBarScan] = useState(false);
   const [runCommandBarScan, setRunCommandBarScan] = useState(false);
@@ -235,10 +238,32 @@ export default function Dashboard() {
       return undefined;
     }
 
+    setWakeWordSupported(true);
     const recognition = new SpeechRecognition();
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = "en-US";
+
+    let shouldRestart = true;
+
+    const startRecognition = () => {
+      if (!shouldRestart || recognitionRunningRef.current) {
+        return;
+      }
+
+      try {
+        recognition.start();
+      } catch (_error) {
+        setWakeWordStatus("Microphone not ready. Click Enable Mic.");
+      }
+    };
+
+    speechStartRef.current = startRecognition;
+
+    recognition.onstart = () => {
+      recognitionRunningRef.current = true;
+      setWakeWordStatus(wakeWordActiveRef.current ? "Listening for command" : "Waiting for Hey Cipher");
+    };
 
     recognition.onresult = (event) => {
       for (let index = event.resultIndex; index < event.results.length; index += 1) {
@@ -285,6 +310,8 @@ export default function Dashboard() {
     };
 
     recognition.onend = () => {
+      recognitionRunningRef.current = false;
+
       if (wakeWordActiveRef.current) {
         const voiceCommand = pendingVoiceCommandRef.current.trim();
         if (voiceCommand) {
@@ -297,22 +324,28 @@ export default function Dashboard() {
         wakeWordActiveRef.current = false;
       }
 
+      if (!shouldRestart || !userGestureArmedRef.current) {
+        return;
+      }
+
       restartRecognitionRef.current = window.setTimeout(() => {
-        try {
-          recognition.start();
-          setWakeWordStatus(wakeWordActiveRef.current ? "Listening" : "Waiting for Hey Cipher");
-        } catch (_error) {
-          setWakeWordStatus("Wake word listener paused");
-        }
+        startRecognition();
       }, 250);
     };
 
     recognition.onerror = (event) => {
-      if (String(event?.error || "").toLowerCase() === "not-allowed") {
-        setWakeWordStatus("Microphone blocked");
-        setWakeWordSupported(false);
+      recognitionRunningRef.current = false;
+      const code = String(event?.error || "unknown").toLowerCase();
+
+      if (code === "not-allowed" || code === "service-not-allowed") {
+        setWakeWordStatus("Microphone blocked. Click Enable Mic and allow access.");
         wakeWordActiveRef.current = false;
         pendingVoiceCommandRef.current = "";
+        return;
+      }
+
+      if (code === "no-speech" || code === "aborted") {
+        setWakeWordStatus("Listening paused. Waiting for Hey Cipher");
         return;
       }
 
@@ -320,26 +353,30 @@ export default function Dashboard() {
     };
 
     recognitionRef.current = recognition;
+    setWakeWordStatus("Click Enable Mic, then say Hey Cipher");
 
-    try {
-      recognition.start();
-      setWakeWordStatus("Waiting for Hey Cipher");
-    } catch (_error) {
-      setWakeWordStatus("Wake word listener paused");
-    }
+    const onUserGesture = () => {
+      userGestureArmedRef.current = true;
+      startRecognition();
+    };
+
+    window.addEventListener("pointerdown", onUserGesture, { once: true });
 
     return () => {
+      shouldRestart = false;
       if (restartRecognitionRef.current) {
         window.clearTimeout(restartRecognitionRef.current);
       }
+      window.removeEventListener("pointerdown", onUserGesture);
       try {
         recognition.stop();
       } catch (_error) {
         // Ignore shutdown errors.
       }
+      recognitionRunningRef.current = false;
       recognitionRef.current = null;
     };
-  }, [wakeWordSupported]);
+  }, []);
 
   const submitCipherCommand = async (rawCommand) => {
     const trimmed = String(rawCommand || "").trim();
@@ -463,6 +500,11 @@ export default function Dashboard() {
       return;
     }
     setRunCommandBarScan(true);
+  };
+
+  const handleWakeWordRetry = () => {
+    userGestureArmedRef.current = true;
+    speechStartRef.current();
   };
 
   return (
@@ -607,6 +649,7 @@ export default function Dashboard() {
         canRunCommandBarScan={canRunCommandBarScan}
         runCommandBarScan={runCommandBarScan}
         onIntroComplete={handleCommandBarIntroComplete}
+        onWakeWordRetry={handleWakeWordRetry}
       />
     </div>
   );
