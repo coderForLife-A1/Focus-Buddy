@@ -1,0 +1,198 @@
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap");
+
+:root {
+  --cipher-bg: #0a0a0c;
+  --cipher-glass: rgba(255, 255, 255, 0.03);
+  --cipher-border: rgba(255, 255, 255, 0.08);
+  --cipher-border-soft: #333333;
+  --cipher-accent: #00ffff;
+  --cipher-copy: #c9d0d8;
+  --cipher-subtle: #7f8790;
+  --cipher-secure: #00ff00;
+}
+
+.cipher-dispatch-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 1.2rem;
+  min-height: 530px;
+  height: 100%;
+  padding: 1.4rem;
+  background: var(--cipher-glass);
+  border: 1px solid var(--cipher-border);
+  border-radius: 14px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  font-family: "JetBrains Mono", "Fira Code", "Roboto Mono", monospace;
+  color: var(--cipher-copy);
+  overflow: hidden;
+}
+
+.cipher-dispatch-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(130deg, rgba(0, 255, 255, 0.05), transparent 42%, rgba(255, 255, 255, 0.02) 72%);
+  pointer-events: none;
+}
+
+.cipher-dispatch-hover {
+  border-color: rgba(0, 255, 255, 0.28);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55), 0 0 28px rgba(0, 255, 255, 0.15);
+}
+
+.cipher-status-row {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.cipher-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--cipher-secure);
+  box-shadow: 0 0 10px rgba(0, 255, 0, 0.85);
+  animation: cipherPulse 1.3s ease-in-out infinite;
+}
+
+.cipher-status-text {
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  color: #8dd498;
+  text-transform: uppercase;
+}
+
+.cipher-header {
+  z-index: 1;
+  display: grid;
+  gap: 0.5rem;
+  padding-right: 7.5rem;
+}
+
+.cipher-title {
+  margin: 0;
+  font-size: 0.93rem;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: #defeff;
+}
+
+.cipher-subtitle {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--cipher-subtle);
+}
+
+.cipher-form {
+  z-index: 1;
+  flex: 1;
+  display: grid;
+  grid-template-rows: auto auto auto auto auto auto 1fr auto;
+  gap: 0.75rem;
+}
+
+.cipher-label {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  color: #93a0aa;
+  text-transform: uppercase;
+}
+
+.cipher-input {
+  height: 40px;
+  border: 0;
+  border-bottom: 1px solid var(--cipher-border-soft);
+  border-radius: 3px;
+  background: transparent;
+  color: #e5fcff;
+  padding: 0.2rem 0.1rem;
+  font-size: 0.9rem;
+  line-height: 1.3;
+  outline: none;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+  font-family: inherit;
+}
+
+.cipher-input:focus {
+  border-bottom-color: var(--cipher-accent);
+  box-shadow: 0 4px 10px rgba(0, 255, 255, 0.2);
+}
+
+.cipher-input-focused {
+  border-bottom-color: var(--cipher-accent);
+  box-shadow: 0 4px 10px rgba(0, 255, 255, 0.2);
+}
+
+.cipher-textarea {
+  min-height: 180px;
+  height: 100%;
+  max-height: 320px;
+  resize: none;
+  padding-top: 0.5rem;
+}
+
+.cipher-dispatch-button {
+  margin-top: 0.6rem;
+  min-height: 44px;
+  border-radius: 3px;
+  border: 1px solid var(--cipher-accent);
+  background: transparent;
+  color: var(--cipher-accent);
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background-color 150ms ease, text-shadow 150ms ease, box-shadow 150ms ease;
+}
+
+.cipher-dispatch-button:hover,
+.cipher-dispatch-button-hover {
+  background: rgba(0, 255, 255, 0.1);
+  text-shadow: 0 0 12px rgba(0, 255, 255, 0.9);
+  box-shadow: 0 0 14px rgba(0, 255, 255, 0.22);
+}
+
+.cipher-input[readonly],
+.cipher-textarea[readonly] {
+  caret-color: transparent;
+}
+
+@keyframes cipherPulse {
+
+  0%,
+  100% {
+    opacity: 0.52;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.22);
+  }
+}
+
+@media (max-width: 780px) {
+  .cipher-dispatch-card {
+    min-height: 500px;
+  }
+
+  .cipher-header {
+    padding-right: 0;
+    margin-top: 1.1rem;
+  }
+
+  .cipher-status-row {
+    right: 0.9rem;
+  }
+}
