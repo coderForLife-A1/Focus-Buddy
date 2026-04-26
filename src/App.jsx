@@ -1,5 +1,5 @@
 import { useEffect, Suspense, lazy } from "react";
-import { BrowserRouter, Navigate, Route, Routes, useNavigate } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import TopNav from "./components/TopNav";
 import { resetScramblePlayed } from "./lib/scramble";
 
@@ -10,6 +10,7 @@ const HistoryPage = lazy(() => import("./pages/HistoryPage"));
 const CalendarPage = lazy(() => import("./pages/CalendarPage"));
 const SummarizerPage = lazy(() => import("./pages/SummarizerPage"));
 const ContactPage = lazy(() => import("./pages/ContactPage"));
+const LoginPage = lazy(() => import("./pages/Login"));
 
 function ResetIntroRoute() {
   const navigate = useNavigate();
@@ -44,7 +45,18 @@ export default function App() {
 
   return (
     <BrowserRouter>
-      <TopNav />
+      <AppShell />
+    </BrowserRouter>
+  );
+}
+
+function AppShell() {
+  const location = useLocation();
+  const hideTopNav = location.pathname === "/login";
+
+  return (
+    <>
+      {!hideTopNav && <TopNav />}
       <Suspense
         fallback={
           <div className="px-6 py-10 text-sm text-zinc-400">
@@ -60,9 +72,10 @@ export default function App() {
           <Route path="/calendar" element={<CalendarPage />} />
           <Route path="/summarizer" element={<SummarizerPage />} />
           <Route path="/contact" element={<ContactPage />} />
+          <Route path="/login" element={<LoginPage />} />
           <Route path="/reset-intro" element={<ResetIntroRoute />} />
         </Routes>
       </Suspense>
-    </BrowserRouter>
+    </>
   );
 }
