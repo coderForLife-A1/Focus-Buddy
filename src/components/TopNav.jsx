@@ -8,7 +8,6 @@ const tabs = [
   { to: "/todo", label: "To-Do" },
   { to: "/calendar", label: "Calendar" },
   { to: "/summarizer", label: "Summarizer" },
-  { to: "/contact", label: "Contact" },
 ];
 
 export default function TopNav() {

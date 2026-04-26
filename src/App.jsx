@@ -9,7 +9,6 @@ const TodoPage = lazy(() => import("./pages/TodoPage"));
 const HistoryPage = lazy(() => import("./pages/HistoryPage"));
 const CalendarPage = lazy(() => import("./pages/CalendarPage"));
 const SummarizerPage = lazy(() => import("./pages/SummarizerPage"));
-const ContactPage = lazy(() => import("./pages/ContactPage"));
 
 function ResetIntroRoute() {
   const navigate = useNavigate();
@@ -59,7 +58,6 @@ export default function App() {
           <Route path="/history" element={<HistoryPage />} />
           <Route path="/calendar" element={<CalendarPage />} />
           <Route path="/summarizer" element={<SummarizerPage />} />
-          <Route path="/contact" element={<ContactPage />} />
           <Route path="/reset-intro" element={<ResetIntroRoute />} />
         </Routes>
       </Suspense>
