@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import TextScramble from "./TextScramble";
-import { supabase } from "../lib/supabase";
+import { supabase, supabaseError } from "../lib/supabase";
 
 const tabs = [
   { to: "/", label: "Dashboard" },
@@ -29,6 +29,10 @@ export default function TopNav() {
   }, []);
 
   async function handleLogout() {
+    if (!supabase) {
+      console.error("Supabase not initialized");
+      return;
+    }
     setIsLoggingOut(true);
     try {
       await supabase.auth.signOut();
