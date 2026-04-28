@@ -22,6 +22,10 @@ export default {
           "0%, 100%": { opacity: "0.75" },
           "50%": { opacity: "1" },
         },
+        marqueeVertical: {
+          '0%': { transform: 'translateY(0)' },
+          '100%': { transform: 'translateY(-50%)' },
+        },
       },
       animation: {
         glowPulse: "glowPulse 2.2s ease-in-out infinite",
@@ -29,6 +33,7 @@ export default {
         "neural-pulse-fast": "neuralPulse 0.8s ease-in-out infinite",
         "neural-badge-slow": "neuralBadge 2s ease-in-out infinite",
         "neural-badge-fast": "neuralBadge 0.8s ease-in-out infinite",
+        'marquee-vertical': 'marqueeVertical 18s linear infinite',
       },
     },
   },

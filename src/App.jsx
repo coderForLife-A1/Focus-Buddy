@@ -2,6 +2,7 @@ import { useEffect, Suspense, lazy } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import TopNav from "./components/TopNav";
 import { resetScramblePlayed } from "./lib/scramble";
+import { extractTokenFromSupabaseStorage } from "./lib/api";
 
 const Dashboard = lazy(() => import("./components/Dashboard"));
 const VelocityDashboard = lazy(() => import("./components/VelocityDashboard"));
@@ -53,6 +54,15 @@ export default function App() {
 function AppShell() {
   const location = useLocation();
   const hideTopNav = location.pathname === "/login";
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    // If no supabase token is present, redirect to login (unless already there)
+    const token = extractTokenFromSupabaseStorage();
+    if (!token && location.pathname !== "/login") {
+      navigate("/login", { replace: true });
+    }
+  }, [location.pathname, navigate]);
 
   return (
     <>
