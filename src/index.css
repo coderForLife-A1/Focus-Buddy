@@ -1,4 +1,4 @@
-/* Load JetBrains Mono from Google Fonts */
+/* Load JetBrains Mono from Google Fonts with fallback chain */
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap');
 
 @tailwind base;
@@ -14,5 +14,8 @@ body {
   min-height: 100vh;
   background: #0a0a0c;
   color: #e5e7eb;
-  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+  /* Fallback chain: Google Fonts JetBrains Mono -> system monospace fonts -> generic monospace */
+  font-family: "JetBrains Mono", "IBM Plex Mono", "Courier New", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-feature-settings: "calt" 1, "ss01" 1;
+  /* Contextual alternates and stylistic set for cleaner look */
 }

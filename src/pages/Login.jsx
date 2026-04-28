@@ -1,10 +1,27 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 
 export default function LoginPage() {
     const [isLoading, setIsLoading] = useState(false);
+    const navigate = useNavigate();
+
+    // If user is already authenticated, redirect to the stored target or dashboard
+    useEffect(() => {
+        const token = window.localStorage.getItem("sb-access-token") ||
+            Object.keys(window.localStorage).find(key => key.startsWith("sb-") && key.endsWith("-auth-token"));
+        if (token) {
+            const redirectTarget = window.localStorage.getItem("login-redirect-target") || "/";
+            window.localStorage.removeItem("login-redirect-target");
+            navigate(redirectTarget, { replace: true });
+        }
+    }, [navigate]);
 
     async function handleMicrosoftLogin() {
+        // Store current location for redirect after OAuth callback
+        const nextPage = window.location.search ? new URLSearchParams(window.location.search).get("next") : null;
+        window.localStorage.setItem("login-redirect-target", nextPage || "/");
+
         setIsLoading(true);
         try {
             const { error } = await supabase.auth.signInWithOAuth({
