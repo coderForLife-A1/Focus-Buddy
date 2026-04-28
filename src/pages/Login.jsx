@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "../lib/supabase";
+import { supabase, supabaseError } from "../lib/supabase";
 
 export default function LoginPage() {
     const [isLoading, setIsLoading] = useState(false);
@@ -18,6 +18,10 @@ export default function LoginPage() {
     }, [navigate]);
 
     async function handleMicrosoftLogin() {
+        if (!supabase) {
+            console.error(supabaseError);
+            return;
+        }
         // Store current location for redirect after OAuth callback
         const nextPage = window.location.search ? new URLSearchParams(window.location.search).get("next") : null;
         window.localStorage.setItem("login-redirect-target", nextPage || "/");
@@ -39,6 +43,22 @@ export default function LoginPage() {
             console.error("Unexpected OAuth error:", err);
             setIsLoading(false);
         }
+    }
+
+    // Show error if Supabase isn't initialized
+    if (supabaseError) {
+        return (
+            <main className="h-screen w-full flex items-center justify-center bg-[#0a0a0c] text-zinc-100">
+                <div className="max-w-lg p-8 border border-red-500/50 bg-red-500/5 rounded-lg">
+                    <h1 className="text-2xl font-mono text-red-400 mb-4">[ SYSTEM ERROR ]</h1>
+                    <p className="text-sm text-red-300 mb-4 font-mono">{supabaseError}</p>
+                    <p className="text-xs text-zinc-400">
+                        Create a <code className="bg-black/50 px-2 py-1 rounded">.env.local</code> file in the project root with:<br />
+                        <code className="block bg-black/50 p-2 rounded mt-2">VITE_SUPABASE_URL=your_url<br />VITE_SUPABASE_ANON_KEY=your_key</code>
+                    </p>
+                </div>
+            </main>
+        );
     }
 
     const systemCards = [
