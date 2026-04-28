@@ -128,3 +128,11 @@ coverage.xml
 *.py,cover
 .hypothesis/
 .pytest_cache/
+
+# ========================
+# Editor and Agent directories
+# ========================
+.agents/
+.cursor/
+.vscode/
+.idea/
