@@ -75,7 +75,8 @@ function AppShell() {
         }
       >
         <Routes>
-          <Route path="/" element={<Dashboard />} />
+          <Route path="/" element={<Navigate to="/login" replace />} />
+          <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/velocity" element={<VelocityDashboard />} />
           <Route path="/todo" element={<TodoPage />} />
           <Route path="/history" element={<HistoryPage />} />
