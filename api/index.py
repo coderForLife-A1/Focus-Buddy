@@ -734,26 +734,21 @@ def _build_msal_confidential_app() -> Tuple[Optional[msal.ConfidentialClientAppl
 def _sanitize_redirect_target(raw_target: str) -> str:
     candidate = (raw_target or "").strip()
     if not candidate:
-        return "/todo.html"
+        return "/todo"
 
     if candidate.startswith("/"):
         return candidate
 
     parsed = urlparse(candidate)
     if parsed.scheme not in {"http", "https"}:
-        return "/todo.html"
+        return "/todo"
 
     host = (parsed.hostname or "").lower()
     request_host = (request.host or "").split(":")[0].lower()
     if host not in {"localhost", "127.0.0.1", request_host}:
-        return "/todo.html"
+        return "/todo"
 
     return candidate
-
-
-def _get_microsoft_auth_session_id() -> Optional[str]:
-    auth_session_id = str(session.get("ms_auth_session_id") or "").strip()
-    return auth_session_id or None
 
 
 def _get_microsoft_auth_session_id() -> Optional[str]:
@@ -770,10 +765,15 @@ def _persist_microsoft_auth_session(auth_session_id: str, token_result: Dict[str
     refresh_token = token_result.get("refresh_token")
     id_token_claims = token_result.get("id_token_claims") or {}
     expires_at = int(time.time()) + max(0, expires_in - 60)
+    
+    # Keep existing user context if refresh omits id_token
+    existing_cache = _microsoft_token_cache.get(auth_session_id) or {}
+    existing_user = existing_cache.get("user") or session.get("ms_graph_user") or {}
+
     user_info = {
-        "displayName": id_token_claims.get("name"),
-        "userPrincipalName": id_token_claims.get("preferred_username") or id_token_claims.get("upn") or id_token_claims.get("email"),
-        "userId": id_token_claims.get("oid") or id_token_claims.get("sub"),
+        "displayName": id_token_claims.get("name") or existing_user.get("displayName"),
+        "userPrincipalName": id_token_claims.get("preferred_username") or id_token_claims.get("upn") or id_token_claims.get("email") or existing_user.get("userPrincipalName"),
+        "userId": id_token_claims.get("oid") or id_token_claims.get("sub") or existing_user.get("userId"),
     }
 
     session["ms_auth_session_id"] = auth_session_id
@@ -1347,7 +1347,7 @@ def _generate_cipher_velocity_critique(api_key: str, velocity_payload: Dict[str,
 @app.after_request
 def _add_cors_headers(response):
     request_origin = (request.headers.get("Origin") or "").strip()
-    allowed_origins_raw = os.getenv("CORS_ALLOW_ORIGINS", "http://localhost:5500,http://127.0.0.1:5500")
+    allowed_origins_raw = os.getenv("CORS_ALLOW_ORIGINS", "http://localhost:5500,http://127.0.0.1:5500,http://localhost:5173,http://127.0.0.1:5173")
     allowed_origins = {item.strip() for item in allowed_origins_raw.split(",") if item.strip()}
 
     if request_origin and (not allowed_origins or request_origin in allowed_origins):
@@ -1437,7 +1437,7 @@ def microsoft_login_callback():
 
     _save_delegated_token_result(token_result)
     session.pop("ms_auth_state", None)
-    redirect_target = _sanitize_redirect_target(session.pop("ms_auth_next", "/todo.html"))
+    redirect_target = _sanitize_redirect_target(session.pop("ms_auth_next", "/todo"))
     return redirect(redirect_target)
 
 
@@ -1445,7 +1445,7 @@ def microsoft_login_callback():
 def microsoft_logout():
     _clear_microsoft_auth_session()
     if request.method == "GET":
-        redirect_target = _sanitize_redirect_target(request.args.get("next") or "/todo.html")
+        redirect_target = _sanitize_redirect_target(request.args.get("next") or "/todo")
         return redirect(redirect_target)
     return jsonify({"ok": True})
 
@@ -1693,14 +1693,6 @@ def microsoft_todo_tasks_collection():
 
     created_task = created_response.get("data") or {}
     return jsonify({"todo": _serialize_graph_todo_task(created_task, str(selected_list.get("id") or ""), str(selected_list.get("displayName") or ""))}), 201
-
-    return _json_error(
-        "Microsoft To Do write operations are not supported with application credentials",
-        501,
-        {
-            "reason": "To create tasks, switch to delegated Microsoft sign-in or use the local Supabase todo API.",
-        },
-    )
 
 
 @app.route("/api/microsoft-todo/tasks/<task_id>", methods=["PATCH", "DELETE"])
