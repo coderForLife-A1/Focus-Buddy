@@ -9,9 +9,9 @@ export default function LoginPage() {
     // If user is already authenticated, redirect to the stored target or dashboard
     useEffect(() => {
         const token = window.localStorage.getItem("sb-access-token") ||
-            Object.keys(window.localStorage).find(key => key.startsWith("sb-") && key.endsWith("-auth-token"));
+            Object.keys(window.localStorage).find(key => key.startsWith("sb-") && key.endsWith("auth-token"));
         if (token) {
-            const redirectTarget = window.localStorage.getItem("login-redirect-target") || "/";
+            const redirectTarget = window.localStorage.getItem("login-redirect-target") || "/dashboard";
             window.localStorage.removeItem("login-redirect-target");
             navigate(redirectTarget, { replace: true });
         }
@@ -24,7 +24,7 @@ export default function LoginPage() {
         }
         // Store current location for redirect after OAuth callback
         const nextPage = window.location.search ? new URLSearchParams(window.location.search).get("next") : null;
-        window.localStorage.setItem("login-redirect-target", nextPage || "/");
+        window.localStorage.setItem("login-redirect-target", nextPage || "/dashboard");
 
         setIsLoading(true);
         try {

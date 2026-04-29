@@ -4,7 +4,7 @@ import TextScramble from "./TextScramble";
 import { supabase, supabaseError } from "../lib/supabase";
 
 const tabs = [
-  { to: "/", label: "Dashboard" },
+  { to: "/dashboard", label: "Dashboard" },
   { to: "/velocity", label: "Velocity" },
   { to: "/history", label: "History" },
   { to: "/todo", label: "To-Do" },
