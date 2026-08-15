@@ -206,7 +206,7 @@ export default function VelocityDashboard() {
                         <div className="text-center">
                             <p className="text-xs uppercase tracking-[0.2em] text-cyan-300/80">Cipher Pipeline</p>
                             <p className="mt-2 text-2xl font-semibold text-cyan-100">Decoding Data...</p>
-                            <p className="mt-2 text-sm text-zinc-400">Syncing Graph completions and focus telemetry from Supabase.</p>
+                            <p className="mt-2 text-sm text-zinc-400">Syncing task completions and focus telemetry from Supabase.</p>
                         </div>
                     </motion.div>
                 ) : error ? (

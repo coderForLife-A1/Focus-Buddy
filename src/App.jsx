@@ -1,8 +1,7 @@
 import { useEffect, Suspense, lazy } from "react";
-import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import TopNav from "./components/TopNav";
 import { resetScramblePlayed } from "./lib/scramble";
-import { extractTokenFromSupabaseStorage } from "./lib/api";
 
 const Dashboard = lazy(() => import("./components/Dashboard"));
 const VelocityDashboard = lazy(() => import("./components/VelocityDashboard"));
@@ -52,21 +51,9 @@ export default function App() {
 }
 
 function AppShell() {
-  const location = useLocation();
-  const hideTopNav = location.pathname === "/login";
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    // If no supabase token is present, redirect to login (unless already there)
-    const token = extractTokenFromSupabaseStorage();
-    if (!token && location.pathname !== "/login") {
-      navigate("/login", { replace: true });
-    }
-  }, [location.pathname, navigate]);
-
   return (
     <>
-      {!hideTopNav && <TopNav />}
+      <TopNav />
       <Suspense
         fallback={
           <div className="px-6 py-10 text-sm text-zinc-400">
@@ -75,7 +62,8 @@ function AppShell() {
         }
       >
         <Routes>
-          <Route path="/" element={<Dashboard />} />
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/velocity" element={<VelocityDashboard />} />
           <Route path="/todo" element={<TodoPage />} />
           <Route path="/history" element={<HistoryPage />} />

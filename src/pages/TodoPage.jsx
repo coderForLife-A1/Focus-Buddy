@@ -29,21 +29,11 @@ const panelIntroVariants = {
   },
 };
 
-function titleForMode(mode, authenticated) {
-  if (mode === "microsoft") {
-    return authenticated ? "Microsoft To Do mode" : "Microsoft read-only mode";
-  }
-  return "Local Supabase tasks mode";
-}
-
 export default function TodoPage() {
   useDocumentTitleScramble("Focus Buddy | Task Manager");
 
   const [todos, setTodos] = useState([]);
-  const [todoMode, setTodoMode] = useState("local");
   const [status, setStatus] = useState("Loading tasks...");
-  const [auth, setAuth] = useState({ authenticated: false, user: null });
-  const [msState, setMsState] = useState({ lists: [], selectedListId: "", readOnly: true });
   const [titleInput, setTitleInput] = useState("");
   const [dueDateInput, setDueDateInput] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -54,76 +44,20 @@ export default function TodoPage() {
     return { total, done, open: total - done };
   }, [todos]);
 
-  async function refreshAuthStatus() {
-    try {
-      const { response, payload } = await apiFetch("/api/auth/microsoft/status", { method: "GET" });
-      if (!response.ok) {
-        setAuth({ authenticated: false, user: null });
-        return false;
-      }
-      setAuth({ authenticated: Boolean(payload?.authenticated), user: payload?.user || null });
-      return Boolean(payload?.authenticated);
-    } catch (_error) {
-      setAuth({ authenticated: false, user: null });
-      return false;
-    }
-  }
-
   async function loadLocalTodos() {
-    setStatus("Loading local tasks...");
+    setStatus("Loading tasks...");
     const { response, payload } = await apiFetch("/api/todos", { method: "GET" });
     if (!response.ok) {
-      throw new Error(payload?.error || "Failed to load local tasks");
+      throw new Error(payload?.error || "Failed to load tasks");
     }
     setTodos(Array.isArray(payload?.todos) ? payload.todos : []);
-    setTodoMode("local");
-    setStatus("Local tasks loaded.");
-  }
-
-  async function loadMicrosoftTodos(listId = "") {
-    setStatus("Loading Microsoft To Do tasks...");
-    const params = new URLSearchParams();
-    if (listId) {
-      params.set("listId", listId);
-    }
-
-    const { response, payload } = await apiFetch(
-      `/api/microsoft-todo/tasks${params.toString() ? `?${params.toString()}` : ""}`,
-      { method: "GET" }
-    );
-
-    if (!response.ok) {
-      throw new Error(payload?.error || "Failed to load Microsoft To Do tasks");
-    }
-
-    const lists = Array.isArray(payload?.lists) ? payload.lists : [];
-    const selectedListId = String(payload?.selectedList?.id || listId || (lists[0]?.id || ""));
-
-    setMsState({
-      lists,
-      selectedListId,
-      readOnly: Boolean(payload?.readOnly),
-    });
-    setTodos(Array.isArray(payload?.todos) ? payload.todos : []);
-    setTodoMode("microsoft");
-    setStatus("Microsoft To Do tasks loaded.");
-  }
-
-  async function initializePage() {
-    try {
-      const isAuthenticated = await refreshAuthStatus();
-      if (isAuthenticated) {
-        await loadMicrosoftTodos();
-      } else {
-        await loadLocalTodos();
-      }
-    } catch (error) {
-      setStatus(error.message || "Failed to load tasks");
-    }
+    setStatus("Tasks loaded.");
   }
 
   useEffect(() => {
-    initializePage();
+    loadLocalTodos().catch((error) => {
+      setStatus(error.message || "Failed to load tasks");
+    });
   }, []);
 
   async function addTodo() {
@@ -134,30 +68,16 @@ export default function TodoPage() {
 
     setIsSubmitting(true);
     try {
-      if (todoMode === "microsoft") {
-        const { response, payload } = await apiFetch("/api/microsoft-todo/tasks", {
-          method: "POST",
-          body: JSON.stringify({
-            title,
-            dueDate: dueDateInput || null,
-            listId: msState.selectedListId || null,
-          }),
-        });
-        if (!response.ok) {
-          throw new Error(payload?.error || "Failed to add Microsoft task");
-        }
-        await loadMicrosoftTodos(msState.selectedListId);
-      } else {
-        const { response, payload } = await apiFetch("/api/todos", {
-          method: "POST",
-          body: JSON.stringify({ title, dueDate: dueDateInput || null }),
-        });
-        if (!response.ok) {
-          throw new Error(payload?.error || "Failed to add task");
-        }
-        await loadLocalTodos();
+      const { response, payload } = await apiFetch("/api/todos", {
+        method: "POST",
+        body: JSON.stringify({ title, dueDate: dueDateInput || null }),
+      });
+
+      if (!response.ok) {
+        throw new Error(payload?.error || "Failed to add task");
       }
 
+      await loadLocalTodos();
       setTitleInput("");
       setDueDateInput("");
     } catch (error) {
@@ -169,33 +89,16 @@ export default function TodoPage() {
 
   async function toggleDone(todo) {
     try {
-      if (todoMode === "microsoft") {
-        const listId = todo?.microsoftTodo?.listId || msState.selectedListId;
-        const { response, payload } = await apiFetch(
-          `/api/microsoft-todo/tasks/${encodeURIComponent(todo.id)}?listId=${encodeURIComponent(listId)}`,
-          {
-            method: "PATCH",
-            body: JSON.stringify({
-              isDone: !todo.isDone,
-              listId,
-              listName: todo?.microsoftTodo?.listName,
-            }),
-          }
-        );
-        if (!response.ok) {
-          throw new Error(payload?.error || "Failed to update Microsoft task");
-        }
-        await loadMicrosoftTodos(msState.selectedListId);
-      } else {
-        const { response, payload } = await apiFetch(`/api/todos/${todo.id}`, {
-          method: "PATCH",
-          body: JSON.stringify({ isDone: !todo.isDone }),
-        });
-        if (!response.ok) {
-          throw new Error(payload?.error || "Failed to update task");
-        }
-        await loadLocalTodos();
+      const { response, payload } = await apiFetch(`/api/todos/${todo.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ isDone: !todo.isDone }),
+      });
+
+      if (!response.ok) {
+        throw new Error(payload?.error || "Failed to update task");
       }
+
+      await loadLocalTodos();
     } catch (error) {
       setStatus(error.message || "Failed to update task");
     }
@@ -214,29 +117,16 @@ export default function TodoPage() {
     }
 
     try {
-      if (todoMode === "microsoft") {
-        const listId = todo?.microsoftTodo?.listId || msState.selectedListId;
-        const { response, payload } = await apiFetch(
-          `/api/microsoft-todo/tasks/${encodeURIComponent(todo.id)}?listId=${encodeURIComponent(listId)}`,
-          {
-            method: "PATCH",
-            body: JSON.stringify({ title, listId, listName: todo?.microsoftTodo?.listName }),
-          }
-        );
-        if (!response.ok) {
-          throw new Error(payload?.error || "Failed to edit Microsoft task");
-        }
-        await loadMicrosoftTodos(msState.selectedListId);
-      } else {
-        const { response, payload } = await apiFetch(`/api/todos/${todo.id}`, {
-          method: "PATCH",
-          body: JSON.stringify({ title }),
-        });
-        if (!response.ok) {
-          throw new Error(payload?.error || "Failed to edit task");
-        }
-        await loadLocalTodos();
+      const { response, payload } = await apiFetch(`/api/todos/${todo.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ title }),
+      });
+
+      if (!response.ok) {
+        throw new Error(payload?.error || "Failed to edit task");
       }
+
+      await loadLocalTodos();
     } catch (error) {
       setStatus(error.message || "Failed to edit task");
     }
@@ -244,52 +134,14 @@ export default function TodoPage() {
 
   async function removeTodo(todo) {
     try {
-      if (todoMode === "microsoft") {
-        const listId = todo?.microsoftTodo?.listId || msState.selectedListId;
-        const { response, payload } = await apiFetch(
-          `/api/microsoft-todo/tasks/${encodeURIComponent(todo.id)}?listId=${encodeURIComponent(listId)}`,
-          {
-            method: "DELETE",
-            body: JSON.stringify({ listId, listName: todo?.microsoftTodo?.listName }),
-          }
-        );
-        if (!response.ok) {
-          throw new Error(payload?.error || "Failed to delete Microsoft task");
-        }
-        await loadMicrosoftTodos(msState.selectedListId);
-      } else {
-        const { response, payload } = await apiFetch(`/api/todos/${todo.id}`, { method: "DELETE" });
-        if (!response.ok) {
-          throw new Error(payload?.error || "Failed to delete task");
-        }
-        await loadLocalTodos();
+      const { response, payload } = await apiFetch(`/api/todos/${todo.id}`, { method: "DELETE" });
+      if (!response.ok) {
+        throw new Error(payload?.error || "Failed to delete task");
       }
+      await loadLocalTodos();
     } catch (error) {
       setStatus(error.message || "Failed to delete task");
     }
-  }
-
-  async function switchToMicrosoft() {
-    try {
-      const isAuthenticated = await refreshAuthStatus();
-      if (!isAuthenticated) {
-        window.location.href = `/api/auth/microsoft/login?next=${encodeURIComponent(window.location.href)}`;
-        return;
-      }
-      await loadMicrosoftTodos(msState.selectedListId);
-    } catch (error) {
-      setStatus(error.message || "Unable to switch to Microsoft mode");
-    }
-  }
-
-  async function logoutMicrosoft() {
-    try {
-      await apiFetch("/api/auth/microsoft/logout", { method: "POST" });
-    } catch (_error) {
-      // Ignore network issues and recover UI to local mode.
-    }
-    setAuth({ authenticated: false, user: null });
-    await loadLocalTodos();
   }
 
   return (
@@ -304,67 +156,19 @@ export default function TodoPage() {
       <motion.div className="mx-auto grid w-full max-w-7xl gap-4 md:grid-cols-12" variants={panelStaggerVariants} initial="hidden" animate="visible">
         <motion.div variants={panelIntroVariants} className={`${GLASS_PANEL} p-5 md:col-span-4`}>
           <h1 className="text-lg font-semibold tracking-wide text-cyan-100">To-Do Manager</h1>
-          <p className="mt-1 text-sm text-zinc-400">{titleForMode(todoMode, auth.authenticated)}</p>
+          <p className="mt-1 text-sm text-zinc-400">Local task mode</p>
 
           <div className="mt-4 space-y-2 text-sm">
             <div className="flex gap-2">
               <button
                 type="button"
-                onClick={loadLocalTodos}
-                className="rounded-xl border border-white/20 bg-white/5 px-3 py-2 text-zinc-200 hover:bg-white/10"
-              >
-                Local Tasks
-              </button>
-              <button
-                type="button"
-                onClick={switchToMicrosoft}
-                className="rounded-xl border border-cyan-300/40 bg-cyan-300/10 px-3 py-2 text-cyan-100 hover:bg-cyan-300/20"
-              >
-                Microsoft To Do
-              </button>
-            </div>
-
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={initializePage}
+                onClick={() => loadLocalTodos().catch((error) => setStatus(error.message || "Failed to load tasks"))}
                 className="rounded-xl border border-white/20 bg-white/5 px-3 py-2 text-zinc-200 hover:bg-white/10"
               >
                 Refresh
               </button>
-              <button
-                type="button"
-                onClick={logoutMicrosoft}
-                className="rounded-xl border border-white/20 bg-white/5 px-3 py-2 text-zinc-200 hover:bg-white/10"
-              >
-                Microsoft Sign Out
-              </button>
             </div>
           </div>
-
-          {todoMode === "microsoft" ? (
-            <div className="mt-4">
-              <label htmlFor="ms-list" className="mb-1 block text-xs uppercase tracking-[0.16em] text-zinc-400">
-                List
-              </label>
-              <select
-                id="ms-list"
-                value={msState.selectedListId}
-                onChange={(e) => {
-                  const next = e.target.value;
-                  setMsState((prev) => ({ ...prev, selectedListId: next }));
-                  loadMicrosoftTodos(next);
-                }}
-                className="w-full rounded-xl border border-white/20 bg-black/30 px-3 py-2 text-sm text-zinc-100"
-              >
-                {(msState.lists || []).map((list) => (
-                  <option key={String(list.id)} value={String(list.id)}>
-                    {list.displayName || "Unnamed list"}
-                  </option>
-                ))}
-              </select>
-            </div>
-          ) : null}
 
           <div className="mt-4 grid grid-cols-3 gap-2 text-center text-sm">
             <div className="rounded-xl border border-white/10 bg-white/5 py-2">
@@ -398,7 +202,7 @@ export default function TodoPage() {
             />
             <button
               type="button"
-              disabled={isSubmitting || (todoMode === "microsoft" && msState.readOnly)}
+              disabled={isSubmitting}
               onClick={addTodo}
               className="h-11 rounded-xl border border-cyan-300/40 bg-cyan-300/10 px-4 text-sm font-medium text-cyan-100 hover:bg-cyan-300/20 disabled:opacity-60"
             >
@@ -423,7 +227,6 @@ export default function TodoPage() {
                     <input
                       type="checkbox"
                       checked={Boolean(todo.isDone)}
-                      disabled={todoMode === "microsoft" && msState.readOnly}
                       onChange={() => toggleDone(todo)}
                       className="h-4 w-4 accent-cyan-300"
                     />
@@ -435,17 +238,15 @@ export default function TodoPage() {
                   <div className="flex gap-2">
                     <button
                       type="button"
-                      disabled={todoMode === "microsoft" && msState.readOnly}
                       onClick={() => editTodo(todo)}
-                      className="rounded-lg border border-white/20 bg-white/5 px-3 py-1 text-xs text-zinc-200 hover:bg-white/10 disabled:opacity-60"
+                      className="rounded-lg border border-white/20 bg-white/5 px-3 py-1 text-xs text-zinc-200 hover:bg-white/10"
                     >
                       Edit
                     </button>
                     <button
                       type="button"
-                      disabled={todoMode === "microsoft" && msState.readOnly}
                       onClick={() => removeTodo(todo)}
-                      className="rounded-lg border border-white/20 bg-white/5 px-3 py-1 text-xs text-zinc-200 hover:bg-white/10 disabled:opacity-60"
+                      className="rounded-lg border border-white/20 bg-white/5 px-3 py-1 text-xs text-zinc-200 hover:bg-white/10"
                     >
                       Delete
                     </button>

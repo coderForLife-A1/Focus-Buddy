@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { apiFetch } from "../lib/api";
 import CommandBar from "./CommandBar";
@@ -84,6 +85,7 @@ function stripWakeWord(transcript) {
 
 export default function Dashboard() {
   useDocumentTitleScramble("Focus Buddy | Cipher Dashboard");
+  const navigate = useNavigate();
 
   const [tasks, setTasks] = useState([]);
   const [feed, setFeed] = useState([
@@ -113,6 +115,14 @@ export default function Dashboard() {
   const typingIntervalRef = useRef(null);
   const [canRunCommandBarScan, setCanRunCommandBarScan] = useState(false);
   const [runCommandBarScan, setRunCommandBarScan] = useState(false);
+
+  useEffect(() => {
+    const token = window.localStorage.getItem("sb-access-token") ||
+      Object.keys(window.localStorage).find(key => key.startsWith("sb-") && key.endsWith("-auth-token"));
+    if (!token) {
+      navigate("/login", { replace: true });
+    }
+  }, [navigate]);
 
   useEffect(() => {
     setRemainingSeconds(durationMinutes * 60);
@@ -524,7 +534,7 @@ export default function Dashboard() {
       >
         <motion.section variants={panelIntroVariants} className={`${GLASS_PANEL} p-5 md:col-span-3`}>
           <h2 className="mb-3 text-sm uppercase tracking-[0.22em] text-cyan-200/80">
-            <TextScramble text="MICROSOFT TO-DO" />
+            <TextScramble text="LOCAL TASKS" />
           </h2>
           <div className="space-y-2 overflow-y-auto pr-1" style={{ maxHeight: "68vh" }}>
             {tasks.length === 0 ? (
