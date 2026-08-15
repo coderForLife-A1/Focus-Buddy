@@ -534,7 +534,7 @@ export default function Dashboard() {
       >
         <motion.section variants={panelIntroVariants} className={`${GLASS_PANEL} p-5 md:col-span-3`}>
           <h2 className="mb-3 text-sm uppercase tracking-[0.22em] text-cyan-200/80">
-            <TextScramble text="MICROSOFT TO-DO" />
+            <TextScramble text="LOCAL TASKS" />
           </h2>
           <div className="space-y-2 overflow-y-auto pr-1" style={{ maxHeight: "68vh" }}>
             {tasks.length === 0 ? (
